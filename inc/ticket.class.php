@@ -70,93 +70,12 @@ class PluginSharepointinfosTicket extends CommonDBTM {
 
       // Récupérer le nom de l'entité
       $entity = new Entity();
-      $entityName = '';
       if ($entity->getFromDB($entityID)) {
          $entityName = $entity->getField('name');
       }
+      echo $entityName;
 
-      // Afficher le nom de l'entité
-      echo "<div class='card'>";
-      echo "<div class='card-header'><h3>Informations SharePoint pour l'entité : $entityName</h3></div>";
-      echo "<div class='card-body'>";
-
-      // Initialiser la connexion SharePoint
-      require_once PLUGIN_SHAREPOINTINFOS_DIR.'/front/SharePointGraph.php';
-      $sharepoint = new PluginSharepointinfosSharepoint();
-      $config = new PluginSharepointinfosConfig();
-
-      try {
-         // Récupérer le Site ID
-         $siteId = $sharepoint->getSiteId($config->Hostname(), '/sites/clients');
-
-         // Récupérer l'ID de la liste "Liste techno"
-         $listId = $sharepoint->getListId($siteId, 'Liste techno');
-
-         // Interroger les éléments de la liste avec le filtre sur le titre
-         $items = $sharepoint->queryListItemsByTitle($siteId, $listId, $entityName);
-
-         if (empty($items)) {
-            echo "<div class='alert alert-info'>Aucune donnée trouvée dans SharePoint pour cette entité.</div>";
-         } else {
-            // Afficher les résultats dans un tableau
-            echo "<table class='table table-striped table-hover'>";
-            echo "<thead><tr>";
-            echo "<th>Titre</th>";
-
-            // Afficher dynamiquement les colonnes basées sur le premier élément
-            if (isset($items[0]['fields'])) {
-               $firstItem = $items[0]['fields'];
-               foreach ($firstItem as $key => $value) {
-                  if ($key !== 'Title' && !str_starts_with($key, '@') && !str_starts_with($key, '_')) {
-                     echo "<th>" . htmlspecialchars($key) . "</th>";
-                  }
-               }
-            }
-
-            echo "</tr></thead>";
-            echo "<tbody>";
-
-            // Afficher les lignes de données
-            foreach ($items as $item) {
-               if (isset($item['fields'])) {
-                  echo "<tr>";
-                  $fields = $item['fields'];
-
-                  // Afficher le titre
-                  echo "<td><strong>" . htmlspecialchars($fields['Title'] ?? '') . "</strong></td>";
-
-                  // Afficher les autres champs
-                  foreach ($fields as $key => $value) {
-                     if ($key !== 'Title' && !str_starts_with($key, '@') && !str_starts_with($key, '_')) {
-                        if (is_array($value)) {
-                           echo "<td>" . htmlspecialchars(json_encode($value)) . "</td>";
-                        } else {
-                           echo "<td>" . htmlspecialchars($value ?? '') . "</td>";
-                        }
-                     }
-                  }
-
-                  echo "</tr>";
-               }
-            }
-
-            echo "</tbody>";
-            echo "</table>";
-
-            echo "<div class='alert alert-success mt-3'>";
-            echo "<strong>" . count($items) . "</strong> élément(s) trouvé(s) dans la liste SharePoint.";
-            echo "</div>";
-         }
-
-      } catch (Exception $e) {
-         echo "<div class='alert alert-danger'>";
-         echo "<strong>Erreur lors de la récupération des données SharePoint :</strong><br>";
-         echo htmlspecialchars($e->getMessage());
-         echo "</div>";
-      }
-
-      echo "</div>"; // fin card-body
-      echo "</div>"; // fin card
+      
    }
 
    /*static function postShowItemNewTaskSHAREPOINTINFOS($params) {
