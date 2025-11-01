@@ -72,52 +72,97 @@ class PluginSharepointinfosTicket extends CommonDBTM {
          // Récupérer l'ID de la liste
          $listId = $sharepoint->getListId($siteId, $config->ListPath());
 
-         // Récupérer les éléments de la liste filtrés par entityName
-         // On filtre sur le champ Title qui doit contenir le nom de l'entité
-         $filter = "fields/Title eq '$entityName'";
-         $items = $sharepoint->getListItems($siteId, $listId, $filter);
+         // Récupérer les colonnes de la liste SharePoint
+         $columns = $sharepoint->getListColumns($siteId, $listId);
+
+         // Filtrer les colonnes à afficher (exclure les colonnes système)
+         $displayColumns = [];
+         $excludedColumns = ['ContentType', 'Attachments', '_UIVersionString', 'Edit', 'LinkTitle',
+                             'ItemChildCount', 'FolderChildCount', 'AppAuthor', 'AppEditor',
+                             '_ComplianceFlags', '_ComplianceTag', '_ComplianceTagWrittenTime',
+                             '_ComplianceTagUserId', '_IsRecord', 'OData__ColorTag', 'ComplianceAssetId'];
+
+         foreach ($columns as $column) {
+            $columnName = $column['name'];
+            $isHidden = isset($column['hidden']) && $column['hidden'] === true;
+
+            // Exclure les colonnes système et cachées
+            if (!in_array($columnName, $excludedColumns) && !$isHidden) {
+               $displayColumns[] = [
+                  'name' => $columnName,
+                  'displayName' => $column['displayName'] ?? $columnName
+               ];
+            }
+         }
+
+         // Récupérer tous les éléments de la liste (sans filtre)
+         $items = $sharepoint->getListItems($siteId, $listId, null);
 
          // Afficher le tableau
          echo '<div class="card">';
-         echo '<div class="card-header">';
-         echo '<h3 class="card-title">Éléments SharePoint pour : ' . htmlspecialchars($entityName) . '</h3>';
+         echo '<div class="card-header d-flex justify-content-between align-items-center">';
+         echo '<h3 class="card-title mb-0">';
+         echo '<i class="fas fa-table"></i> ' . htmlspecialchars($config->ListPath());
+         echo '</h3>';
+         echo '<span class="badge bg-primary">' . count($items) . ' élément(s)</span>';
          echo '</div>';
          echo '<div class="card-body">';
 
          if (empty($items)) {
-            echo '<div class="alert alert-info">Aucun élément trouvé pour cette entité.</div>';
+            echo '<div class="alert alert-info">Aucun élément dans la liste SharePoint.</div>';
          } else {
-            echo '<table class="table table-striped table-hover">';
-            echo '<thead>';
+            echo '<div class="table-responsive">';
+            echo '<table class="table table-striped table-hover table-sm">';
+            echo '<thead class="table-dark">';
             echo '<tr>';
-            echo '<th>ID</th>';
 
-            // Afficher les en-têtes dynamiquement basés sur les champs disponibles
-            $firstItem = reset($items);
-            if (isset($firstItem['fields'])) {
-               foreach ($firstItem['fields'] as $fieldName => $fieldValue) {
-                  echo '<th>' . htmlspecialchars($fieldName) . '</th>';
-               }
+            // Afficher les en-têtes des colonnes
+            foreach ($displayColumns as $column) {
+               echo '<th>' . htmlspecialchars($column['displayName']) . '</th>';
             }
 
             echo '</tr>';
             echo '</thead>';
             echo '<tbody>';
 
+            // Afficher les lignes
             foreach ($items as $item) {
                echo '<tr>';
-               echo '<td>' . htmlspecialchars($item['id'] ?? 'N/A') . '</td>';
 
                if (isset($item['fields'])) {
-                  foreach ($item['fields'] as $fieldName => $fieldValue) {
+                  foreach ($displayColumns as $column) {
+                     $fieldName = $column['name'];
+                     $fieldValue = $item['fields'][$fieldName] ?? '';
+
+                     echo '<td>';
+
                      // Gérer les différents types de valeurs
                      if (is_array($fieldValue)) {
-                        echo '<td>' . htmlspecialchars(json_encode($fieldValue)) . '</td>';
+                        // Pour les lookups ou les personnes
+                        if (isset($fieldValue['LookupValue'])) {
+                           echo htmlspecialchars($fieldValue['LookupValue']);
+                        } elseif (isset($fieldValue['Email'])) {
+                           echo htmlspecialchars($fieldValue['Email']);
+                        } else {
+                           echo '<small class="text-muted">' . htmlspecialchars(json_encode($fieldValue)) . '</small>';
+                        }
                      } elseif (is_bool($fieldValue)) {
-                        echo '<td>' . ($fieldValue ? 'Oui' : 'Non') . '</td>';
+                        echo '<span class="badge ' . ($fieldValue ? 'bg-success' : 'bg-secondary') . '">';
+                        echo $fieldValue ? 'Oui' : 'Non';
+                        echo '</span>';
+                     } elseif (empty($fieldValue)) {
+                        echo '<span class="text-muted">-</span>';
                      } else {
-                        echo '<td>' . htmlspecialchars($fieldValue ?? '') . '</td>';
+                        // Limiter la longueur pour l'affichage
+                        $displayValue = htmlspecialchars($fieldValue);
+                        if (strlen($displayValue) > 100) {
+                           echo '<span title="' . $displayValue . '">' . substr($displayValue, 0, 100) . '...</span>';
+                        } else {
+                           echo $displayValue;
+                        }
                      }
+
+                     echo '</td>';
                   }
                }
 
@@ -126,6 +171,16 @@ class PluginSharepointinfosTicket extends CommonDBTM {
 
             echo '</tbody>';
             echo '</table>';
+            echo '</div>';
+
+            // Légende
+            echo '<div class="mt-3">';
+            echo '<small class="text-muted">';
+            echo '<i class="fas fa-info-circle"></i> ';
+            echo 'Les données sont synchronisées en temps réel avec SharePoint. ';
+            echo 'Toute modification dans SharePoint sera visible ici au prochain chargement.';
+            echo '</small>';
+            echo '</div>';
          }
 
          echo '</div>';
@@ -133,7 +188,8 @@ class PluginSharepointinfosTicket extends CommonDBTM {
 
       } catch (Exception $e) {
          echo '<div class="alert alert-danger">';
-         echo '<strong>Erreur : </strong>' . htmlspecialchars($e->getMessage());
+         echo '<strong>Erreur de connexion SharePoint : </strong><br>';
+         echo '<pre>' . htmlspecialchars($e->getMessage()) . '</pre>';
          echo '</div>';
       }
    }

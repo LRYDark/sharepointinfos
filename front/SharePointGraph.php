@@ -150,6 +150,51 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
     }
 
     /**
+     * Fonction pour récupérer les colonnes d'une liste SharePoint
+     * @param string $siteId - L'ID du site SharePoint
+     * @param string $listId - L'ID de la liste SharePoint
+     * @return array - Les colonnes de la liste
+     */
+    public function getListColumns($siteId, $listId) {
+        $accessToken = $this->getAccessToken();
+
+        $url = "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$listId/columns";
+
+        $headers = [
+            "Authorization: Bearer $accessToken",
+            "Content-Type: application/json"
+        ];
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+        $response = curl_exec($ch);
+
+        if (curl_errno($ch)) {
+            $error = curl_error($ch);
+            curl_close($ch);
+            throw new Exception("Erreur CURL : " . $error);
+        }
+
+        $http_status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($http_status != 200) {
+            throw new Exception("Erreur HTTP $http_status : " . $response);
+        }
+
+        $responseObj = json_decode($response, true);
+
+        if (isset($responseObj['value'])) {
+            return $responseObj['value'];
+        } else {
+            throw new Exception("Impossible de récupérer les colonnes de la liste : " . $response);
+        }
+    }
+
+    /**
      * Fonction pour récupérer les éléments d'une liste SharePoint
      * @param string $siteId - L'ID du site SharePoint
      * @param string $listId - L'ID de la liste SharePoint
