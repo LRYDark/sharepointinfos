@@ -158,7 +158,9 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
             return trim($listIdOverride);
         }
 
-        $url = "https://graph.microsoft.com/v1.0/sites/$siteId/lists?$filter=displayName eq '$listDisplayName'";
+        $escapedDisplayName = str_replace("'", "''", $listDisplayName);
+        $filter = "displayName eq '$escapedDisplayName'";
+        $url = "https://graph.microsoft.com/v1.0/sites/$siteId/lists?" . '$filter=' . rawurlencode($filter);
         $response = $this->performGraphGet($url);
         $responseObj = is_array($response['decoded']) ? $response['decoded'] : array();
 
@@ -281,8 +283,58 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
             throw new Exception("Aucun site SharePoint accessible n'a été détecté.");
         }
 
-        foreach ($sites as $siteId => $siteData) {
-            $sites[$siteId]['lists'] = $this->discoverSiteLists($siteId, $accessToken);
+        foreach ($sites as $siteId => &$siteData) {
+            try {
+                $siteData['lists'] = $this->discoverSiteLists($siteId, $accessToken);
+                $siteData['lists_error'] = '';
+            } catch (Exception $e) {
+                $siteData['lists'] = array();
+                $siteData['lists_error'] = $e->getMessage();
+            }
+        }
+
+        unset($siteData);
+
+        if (class_exists('PluginSharepointinfosConfig')) {
+            $config = new PluginSharepointinfosConfig();
+            $configuredSiteId = $config->SiteID();
+
+            if (!empty($configuredSiteId) && !isset($sites[$configuredSiteId])) {
+                try {
+                    $siteDetails = $this->getSiteDetails($configuredSiteId);
+                    $webUrl = isset($siteDetails['webUrl']) ? $siteDetails['webUrl'] : '';
+                    $parsed = !empty($webUrl) ? parse_url($webUrl) : false;
+
+                    $sites[$configuredSiteId] = array(
+                        'id' => $configuredSiteId,
+                        'displayName' => isset($siteDetails['displayName']) ? $siteDetails['displayName'] : $configuredSiteId,
+                        'webUrl' => $webUrl,
+                        'hostname' => ($parsed !== false && isset($parsed['host'])) ? $parsed['host'] : $config->Hostname(),
+                        'sitePath' => ($parsed !== false && isset($parsed['path'])) ? $parsed['path'] : $config->SitePath(),
+                        'lists' => array(),
+                        'lists_error' => ''
+                    );
+
+                    try {
+                        $sites[$configuredSiteId]['lists'] = $this->discoverSiteLists($configuredSiteId, $accessToken);
+                    } catch (Exception $e) {
+                        $sites[$configuredSiteId]['lists'] = array();
+                        $sites[$configuredSiteId]['lists_error'] = $e->getMessage();
+                    }
+                } catch (Exception $e) {
+                    if (!isset($sites[$configuredSiteId])) {
+                        $sites[$configuredSiteId] = array(
+                            'id' => $configuredSiteId,
+                            'displayName' => $configuredSiteId,
+                            'webUrl' => '',
+                            'hostname' => $config->Hostname(),
+                            'sitePath' => $config->SitePath(),
+                            'lists' => array(),
+                            'lists_error' => $e->getMessage()
+                        );
+                    }
+                }
+            }
         }
 
         return array_values($sites);
@@ -293,10 +345,20 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
             return array();
         }
 
-        $url = "https://graph.microsoft.com/v1.0/sites/$siteId/lists?$select=id,displayName,list,webUrl";
+        $url = "https://graph.microsoft.com/v1.0/sites/$siteId/lists?\$select=id,displayName,list,webUrl";
         $response = $this->performGraphGet($url, $accessToken);
 
         if ($response['status'] != 200) {
+            $decoded = is_array($response['decoded']) ? $response['decoded'] : array();
+
+            if ($response['status'] == 403 || (isset($decoded['error']['code']) && strtolower($decoded['error']['code']) === 'accessdenied')) {
+                $accessDeniedMessage = __('Accès refusé lors de la découverte des listes. Vérifiez les autorisations sur ce site.', 'sharepointinfos');
+                if (isset($decoded['error']['message']) && $decoded['error']['message'] !== '') {
+                    $accessDeniedMessage .= ' (' . $decoded['error']['message'] . ')';
+                }
+                throw new Exception($accessDeniedMessage);
+            }
+
             throw new Exception("Impossible de découvrir les listes du site : " . $response['raw']);
         }
 

@@ -58,6 +58,7 @@ class PluginSharepointinfosConfig extends CommonDBTM
       $errorcon = "";
       $checkcon ="";
       $discoveredSites = array();
+      $listDiscoveryWarnings = array();
       $discoveryError = '';
       $hasCredentials = !empty($config->TenantID()) && !empty($config->ClientID()) && !empty($config->ClientSecret());
 
@@ -87,6 +88,17 @@ class PluginSharepointinfosConfig extends CommonDBTM
 
          try {
             $discoveredSites = $sharepoint->discoverSites();
+            foreach ($discoveredSites as $site) {
+               if (!isset($site['lists_error']) || empty($site['lists_error'])) {
+                  continue;
+               }
+
+               $siteLabel = isset($site['displayName']) && $site['displayName'] !== '' ? $site['displayName'] : $site['id'];
+               $listDiscoveryWarnings[] = array(
+                  'label' => $siteLabel,
+                  'message' => $site['lists_error']
+               );
+            }
          } catch (Exception $e) {
             $discoveryError = $e->getMessage();
          }
@@ -180,6 +192,19 @@ class PluginSharepointinfosConfig extends CommonDBTM
                   <option value=""><?php echo __('Sélectionnez une liste', 'sharepointinfos'); ?></option>
                </select>
                <small class="form-text text-muted"><?php echo __('Seules les listes disponibles sur le site choisi sont affichées.', 'sharepointinfos'); ?></small>
+            </div>
+            <?php } ?>
+
+            <?php if (!empty($listDiscoveryWarnings)) { ?>
+            <div class="col-12">
+               <div class="alert alert-warning mb-0">
+                  <p class="mb-2"><?php echo __('Certaines listes n\'ont pas pu être chargées. Vérifiez les autorisations associées aux sites suivants :', 'sharepointinfos'); ?></p>
+                  <ul class="mb-0 ps-3">
+                     <?php foreach ($listDiscoveryWarnings as $warning) { ?>
+                        <li><strong><?php echo htmlspecialchars($warning['label']); ?></strong> : <?php echo htmlspecialchars($warning['message']); ?></li>
+                     <?php } ?>
+                  </ul>
+               </div>
             </div>
             <?php } ?>
 
@@ -338,6 +363,7 @@ class PluginSharepointinfosConfig extends CommonDBTM
             var hiddenListId = document.getElementById('ListID');
 
             var listsBySite = {};
+            var isInitializing = true;
             discoveredSites.forEach(function (site) {
                listsBySite[site.id] = Array.isArray(site.lists) ? site.lists : [];
             });
@@ -398,7 +424,10 @@ class PluginSharepointinfosConfig extends CommonDBTM
 
                if (!siteId || !listsBySite[siteId] || listsBySite[siteId].length === 0) {
                   listSelect.disabled = true;
-                  updateHiddenList(null);
+                  if (!isInitializing) {
+                     updateHiddenList(null);
+                     initialListId = '';
+                  }
                   return;
                }
 
@@ -464,6 +493,8 @@ class PluginSharepointinfosConfig extends CommonDBTM
             } else {
                populateListSelector('');
             }
+
+            isInitializing = false;
          });
       </script>
 
