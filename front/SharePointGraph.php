@@ -47,10 +47,21 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
 
     /**
      * Fonction pour obtenir l'ID du site SharePoint
+     * Gère différents formats d'URL SharePoint
      */
     public function getSiteId($hostname, $sitePath) {
         $accessToken = $this->getAccessToken();
 
+        // Nettoyer les paramètres
+        $hostname = trim($hostname);
+        $sitePath = trim($sitePath);
+
+        // S'assurer que sitePath commence par /
+        if (!empty($sitePath) && $sitePath[0] !== '/') {
+            $sitePath = '/' . $sitePath;
+        }
+
+        // Méthode 1 : Essayer avec hostname:sitePath (format standard)
         $url = "https://graph.microsoft.com/v1.0/sites/$hostname:$sitePath";
 
         $headers = [
@@ -64,15 +75,48 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 
         $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
         $responseObj = json_decode($response, true);
 
         if (isset($responseObj['id'])) {
             return $responseObj['id'];
-        } else {
-            throw new Exception("Impossible de récupérer l'ID du site : " . $response);
         }
+
+        // Méthode 2 : Si échec, essayer sans le hostname dans le path
+        // Ex: globalinfo763.sharepoint.com + /sites/clients
+        if ($httpCode === 404) {
+            $url2 = "https://graph.microsoft.com/v1.0/sites/$hostname:$sitePath:/";
+
+            $ch2 = curl_init();
+            curl_setopt($ch2, CURLOPT_URL, $url2);
+            curl_setopt($ch2, CURLOPT_HTTPHEADER, $headers);
+            curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
+
+            $response2 = curl_exec($ch2);
+            curl_close($ch2);
+
+            $responseObj2 = json_decode($response2, true);
+
+            if (isset($responseObj2['id'])) {
+                return $responseObj2['id'];
+            }
+        }
+
+        // Si toujours en échec, afficher une erreur détaillée
+        $errorMsg = "Impossible de récupérer l'ID du site.\n";
+        $errorMsg .= "Hostname : $hostname\n";
+        $errorMsg .= "SitePath : $sitePath\n";
+        $errorMsg .= "URL testée : $url\n";
+
+        if (isset($responseObj['error'])) {
+            $errorMsg .= "Erreur API : " . $responseObj['error']['message'];
+        } else {
+            $errorMsg .= "Réponse : " . $response;
+        }
+
+        throw new Exception($errorMsg);
     }
 
     /**

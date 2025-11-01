@@ -84,6 +84,25 @@ class PluginSharepointinfosConfig extends CommonDBTM
       }
       ?>
 
+      <!-- CARD : Aide configuration -->
+      <div class="card mb-3 bg-light">
+         <div class="card-header bg-info text-white">
+            <h5 class="card-title mb-0">
+               <i class="fas fa-info-circle"></i> <?php echo __('Comment configurer ?', 'sharepointinfos'); ?>
+            </h5>
+         </div>
+         <div class="card-body">
+            <p class="mb-2"><strong>À partir de votre URL SharePoint :</strong></p>
+            <code class="d-block mb-3">https://<span class="text-danger">globalinfo763.sharepoint.com</span><span class="text-success">/sites/clients</span>/Lists/<span class="text-primary">Liste%20techno</span>/AllItems.aspx</code>
+
+            <ul class="mb-0">
+               <li><strong>Hostname :</strong> <span class="text-danger">globalinfo763.sharepoint.com</span> (partie avant /sites/...)</li>
+               <li><strong>Chemin du Site :</strong> <span class="text-success">/sites/clients</span> (de /sites jusqu'au nom du site)</li>
+               <li><strong>Nom de la Liste :</strong> <span class="text-primary">Liste techno</span> (nom exact sans %20, avec espaces)</li>
+            </ul>
+         </div>
+      </div>
+
       <!-- CARD : Connexion SharePoint -->
       <div class="card mb-3">
          <div class="card-header">
@@ -107,18 +126,29 @@ class PluginSharepointinfosConfig extends CommonDBTM
                <?php echo Html::input('ClientSecret', ['value' => $config->ClientSecret(), 'class' => 'form-control', 'id' => 'ClientSecret']); ?>
             </div>
             <div class="col-md-6">
-               <label for="Hostname" class="form-label mb-1"><?php echo __('Nom d\'hôte', 'sharepointinfos'); ?></label>
-               <?php echo Html::input('Hostname', ['value' => $config->Hostname(), 'class' => 'form-control', 'id' => 'Hostname']); ?>
+               <label for="Hostname" class="form-label mb-1">
+                  <?php echo __('Nom d\'hôte SharePoint', 'sharepointinfos'); ?>
+                  <small class="text-muted">(ex: votreentreprise.sharepoint.com)</small>
+               </label>
+               <?php echo Html::input('Hostname', ['value' => $config->Hostname(), 'class' => 'form-control', 'id' => 'Hostname', 'placeholder' => 'globalinfo763.sharepoint.com']); ?>
             </div>
 
             <div class="col-md-6">
-               <label for="SitePath" class="form-label mb-1"><?php echo __('Chemin du Site (/sites/clients)', 'sharepointinfos'); ?></label>
+               <label for="SitePath" class="form-label mb-1">
+                  <?php echo __('Chemin du Site', 'sharepointinfos'); ?>
+                  <small class="text-muted">(ex: /sites/clients)</small>
+               </label>
                <?php echo Html::input('SitePath', ['value' => $config->SitePath(), 'class' => 'form-control', 'id' => 'SitePath', 'placeholder' => '/sites/clients']); ?>
+               <small class="form-text text-muted">Copier depuis l'URL : https://votreentreprise.sharepoint.com<strong>/sites/clients</strong>/...</small>
             </div>
 
             <div class="col-md-6">
-               <label for="ListPath" class="form-label mb-1"><?php echo __('Nom de la Liste SharePoint', 'sharepointinfos'); ?></label>
+               <label for="ListPath" class="form-label mb-1">
+                  <?php echo __('Nom de la Liste SharePoint', 'sharepointinfos'); ?>
+                  <small class="text-muted">(nom exact affiché dans SharePoint)</small>
+               </label>
                <?php echo Html::input('ListPath', ['value' => $config->ListPath(), 'class' => 'form-control', 'id' => 'ListPath', 'placeholder' => 'Liste techno']); ?>
+               <small class="form-text text-muted">Le nom exact tel qu'affiché dans SharePoint (sensible à la casse)</small>
             </div>
             </div>
          </div>
