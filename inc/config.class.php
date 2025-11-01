@@ -143,12 +143,30 @@ class PluginSharepointinfosConfig extends CommonDBTM
             </div>
 
             <div class="col-md-6">
+               <label for="SiteID" class="form-label mb-1">
+                  <?php echo __('Identifiant complet du site', 'sharepointinfos'); ?>
+                  <small class="text-muted">(optionnel si le chemin est valide)</small>
+               </label>
+               <?php echo Html::input('SiteID', array('value' => $config->SiteID(), 'class' => 'form-control', 'id' => 'SiteID', 'placeholder' => 'globalinfo763.sharepoint.com,XXXX,XXXX')); ?>
+               <small class="form-text text-muted">Utiliser l'identifiant renvoyé par Microsoft Graph si la détection automatique échoue.</small>
+            </div>
+
+            <div class="col-md-6">
                <label for="ListPath" class="form-label mb-1">
                   <?php echo __('Nom de la Liste SharePoint', 'sharepointinfos'); ?>
                   <small class="text-muted">(nom exact affiché dans SharePoint)</small>
                </label>
                <?php echo Html::input('ListPath', array('value' => $config->ListPath(), 'class' => 'form-control', 'id' => 'ListPath', 'placeholder' => 'Liste techno')); ?>
                <small class="form-text text-muted">Le nom exact tel qu'affiché dans SharePoint (sensible à la casse)</small>
+            </div>
+
+            <div class="col-md-6">
+               <label for="ListID" class="form-label mb-1">
+                  <?php echo __('Identifiant unique de la liste', 'sharepointinfos'); ?>
+                  <small class="text-muted">(optionnel si le nom est reconnu)</small>
+               </label>
+               <?php echo Html::input('ListID', array('value' => $config->ListID(), 'class' => 'form-control', 'id' => 'ListID', 'placeholder' => 'd0ee3770-1eb1-40ed-96a2-3bb2b7664891')); ?>
+               <small class="form-text text-muted">Coller l'ID récupéré via Microsoft Graph pour éviter toute ambiguïté.</small>
             </div>
             </div>
          </div>
@@ -289,6 +307,8 @@ class PluginSharepointinfosConfig extends CommonDBTM
    function Hostname()      { return PluginSharepointinfosCrypto::decrypt(isset($this->fields['Hostname']) ? $this->fields['Hostname'] : ''); }
    function SitePath()      { return PluginSharepointinfosCrypto::decrypt(isset($this->fields['SitePath']) ? $this->fields['SitePath'] : ''); }
    function ListPath()      { return PluginSharepointinfosCrypto::decrypt(isset($this->fields['ListPath']) ? $this->fields['ListPath'] : ''); }
+   function SiteID()        { return PluginSharepointinfosCrypto::decrypt(isset($this->fields['SiteID']) ? $this->fields['SiteID'] : ''); }
+   function ListID()        { return PluginSharepointinfosCrypto::decrypt(isset($this->fields['ListID']) ? $this->fields['ListID'] : ''); }
 
    function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
    {
@@ -338,10 +358,19 @@ class PluginSharepointinfosConfig extends CommonDBTM
                   `Hostname` TEXT NULL,
                   `SitePath` TEXT NULL,
                   `ListPath` TEXT NULL,
+                  `SiteID` TEXT NULL,
+                  `ListID` TEXT NULL,
                   PRIMARY KEY (`id`)
          ) ENGINE=InnoDB DEFAULT CHARSET={$default_charset} COLLATE={$default_collation} ROW_FORMAT=DYNAMIC;";
          $DB->query($query) or die($DB->error());
          $config->add(array('id' => 1));
+      }
+
+      $migration->displayMessage("Updating $table structure");
+      foreach (array('SiteID', 'ListID') as $field) {
+         if (!$DB->fieldExists($table, $field)) {
+            $migration->addField($table, $field, 'text');
+         }
       }
    }
 

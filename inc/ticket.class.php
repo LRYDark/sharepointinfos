@@ -6,10 +6,10 @@ if (!defined('GLPI_ROOT')) {
 
 class PluginSharepointinfosTicket extends CommonDBTM {
 
-   public static $rightname = 'sharepointinfos';
+   public static $rightname = 'plugin_sharepointinfos';
 
    static function getTypeName($nb = 0) {
-      if(Session::haveRight("plugin_sharepointinfos_sign", READ)){
+      if(Session::haveRight(self::$rightname, READ)){
          return _n('Sharepointinfos', 'Sharepointinfos', $nb, 'sharepointinfos');
       }
    }
@@ -35,13 +35,15 @@ class PluginSharepointinfosTicket extends CommonDBTM {
    }
 
    public static function countForItem(CommonDBTM $item) {
-      if(Session::haveRight("plugin_sharepointinfos_sign", READ)){
+      if(Session::haveRight(self::$rightname, READ)){
          return '';
       }
    }
 
    static function showForTicket(Ticket $ticket) {
-      Global $CFG_GLPI, $DB;
+      if (!Session::haveRight(self::$rightname, READ)) {
+         return;
+      }
 
       $entityID = $ticket->getField('entities_id');
 
@@ -59,18 +61,20 @@ class PluginSharepointinfosTicket extends CommonDBTM {
       $config = new PluginSharepointinfosConfig();
       $sharepoint = new PluginSharepointinfosSharepoint();
 
-      // Vérifier la configuration
-      if (empty($config->TenantID()) || empty($config->SitePath()) || empty($config->ListPath())) {
-         echo '<div class="alert alert-danger">Configuration SharePoint incomplète. Veuillez configurer le plugin.</div>';
+      $hasSiteIdentifier = !empty($config->SiteID()) || (!empty($config->Hostname()) && !empty($config->SitePath()));
+      $hasListIdentifier = !empty($config->ListID()) || !empty($config->ListPath());
+
+      if (empty($config->TenantID()) || empty($config->ClientID()) || empty($config->ClientSecret()) || !$hasSiteIdentifier || !$hasListIdentifier) {
+         echo '<div class="alert alert-danger">Configuration SharePoint incomplète. Veuillez vérifier les identifiants, le site et la liste.</div>';
          return;
       }
 
       try {
          // Récupérer l'ID du site
-         $siteId = $sharepoint->getSiteId($config->Hostname(), $config->SitePath());
+         $siteId = $sharepoint->getSiteId($config->Hostname(), $config->SitePath(), $config->SiteID());
 
          // Récupérer l'ID de la liste
-         $listId = $sharepoint->getListId($siteId, $config->ListPath());
+         $listId = $sharepoint->getListId($siteId, $config->ListPath(), $config->ListID());
 
          // Récupérer les colonnes de la liste SharePoint
          $columns = $sharepoint->getListColumns($siteId, $listId);
@@ -119,16 +123,35 @@ class PluginSharepointinfosTicket extends CommonDBTM {
          $filterEntityName = str_replace("'", "''", $entityName);
          $items = $sharepoint->getListItems($siteId, $listId, "fields/Title eq '$filterEntityName'");
 
-         // Afficher le tableau
-         echo '<div class="card">';
-         echo '<div class="card-header d-flex justify-content-between align-items-center">';
-         echo '<h3 class="card-title mb-0">';
-         echo '<i class="fas fa-table"></i> ' . htmlspecialchars($config->ListPath());
-         echo '</h3>';
-         echo '<span class="badge bg-primary">' . count($items) . ' élément(s)</span>';
-         echo '</div>';
-         echo '<div class="card-body">';
+         if (!empty($items)) {
+            $filteredColumns = array();
+            foreach ($displayColumns as $column) {
+               $fieldName = isset($column['name']) ? $column['name'] : '';
+               if (empty($fieldName)) {
+                  continue;
+               }
 
+               foreach ($items as $item) {
+                  if (isset($item['fields'][$fieldName]) && $item['fields'][$fieldName] !== '' && $item['fields'][$fieldName] !== null) {
+                     $filteredColumns[] = $column;
+                     break;
+                  }
+               }
+            }
+
+            if (!empty($filteredColumns)) {
+               $displayColumns = $filteredColumns;
+            }
+         }
+
+         if (empty($displayColumns)) {
+            $displayColumns[] = array(
+               'name' => 'Title',
+               'displayName' => __('Titre', 'sharepointinfos')
+            );
+         }
+
+         // Afficher le tableau
          if (empty($items)) {
             echo '<div class="alert alert-info">';
             echo 'Aucun élément SharePoint ne correspond à l\'entité &laquo; ' . htmlspecialchars($entityName) . ' &raquo;.';
@@ -136,10 +159,9 @@ class PluginSharepointinfosTicket extends CommonDBTM {
          } else {
             echo '<div class="table-responsive">';
             echo '<table class="table table-striped table-hover table-sm">';
-            echo '<thead class="table-dark">';
+            echo '<thead class="table-light">';
             echo '<tr>';
 
-            // Afficher les en-têtes des colonnes
             foreach ($displayColumns as $column) {
                $headerLabel = isset($column['displayName']) ? $column['displayName'] : '';
                echo '<th>' . htmlspecialchars($headerLabel) . '</th>';
@@ -149,71 +171,48 @@ class PluginSharepointinfosTicket extends CommonDBTM {
             echo '</thead>';
             echo '<tbody>';
 
-            // Afficher les lignes
             foreach ($items as $item) {
-               echo '<tr>';
-
-               if (isset($item['fields']) && is_array($item['fields'])) {
-                  foreach ($displayColumns as $column) {
-                     $fieldName = isset($column['name']) ? $column['name'] : '';
-                     if (empty($fieldName)) {
-                        echo '<td><span class="text-muted">-</span></td>';
-                        continue;
-                     }
-
-                     $fieldValue = isset($item['fields'][$fieldName]) ? $item['fields'][$fieldName] : '';
-
-                     echo '<td>';
-
-                     // Gérer les différents types de valeurs
-                     if (is_array($fieldValue)) {
-                        // Pour les lookups ou les personnes
-                        if (isset($fieldValue['LookupValue'])) {
-                           echo htmlspecialchars($fieldValue['LookupValue']);
-                        } elseif (isset($fieldValue['Email'])) {
-                           echo htmlspecialchars($fieldValue['Email']);
-                        } else {
-                           echo '<small class="text-muted">' . htmlspecialchars(json_encode($fieldValue)) . '</small>';
-                        }
-                     } elseif (is_bool($fieldValue)) {
-                        echo '<span class="badge ' . ($fieldValue ? 'bg-success' : 'bg-secondary') . '">';
-                        echo $fieldValue ? 'Oui' : 'Non';
-                        echo '</span>';
-                     } elseif (empty($fieldValue)) {
-                        echo '<span class="text-muted">-</span>';
-                     } else {
-                        // Limiter la longueur pour l'affichage
-                        $displayValue = htmlspecialchars($fieldValue);
-                        if (strlen($displayValue) > 100) {
-                           echo '<span title="' . $displayValue . '">' . substr($displayValue, 0, 100) . '...</span>';
-                        } else {
-                           echo $displayValue;
-                        }
-                     }
-
-                     echo '</td>';
-                  }
+               if (!isset($item['fields']) || !is_array($item['fields'])) {
+                  continue;
                }
 
+               echo '<tr>';
+               foreach ($displayColumns as $column) {
+                  $fieldName = isset($column['name']) ? $column['name'] : '';
+                  $fieldValue = ($fieldName !== '' && isset($item['fields'][$fieldName])) ? $item['fields'][$fieldName] : '';
+
+                  echo '<td>';
+
+                  if (is_array($fieldValue)) {
+                     if (isset($fieldValue['LookupValue'])) {
+                        echo htmlspecialchars($fieldValue['LookupValue']);
+                     } elseif (isset($fieldValue['Email'])) {
+                        echo htmlspecialchars($fieldValue['Email']);
+                     } else {
+                        echo '<small class="text-muted">' . htmlspecialchars(json_encode($fieldValue)) . '</small>';
+                     }
+                  } elseif (is_bool($fieldValue)) {
+                     echo $fieldValue ? __('Oui', 'sharepointinfos') : __('Non', 'sharepointinfos');
+                  } elseif ($fieldValue === '' || $fieldValue === null) {
+                     echo '<span class="text-muted">-</span>';
+                  } else {
+                     $displayValue = htmlspecialchars($fieldValue);
+                     if (strlen($displayValue) > 100) {
+                        echo '<span title="' . $displayValue . '">' . substr($displayValue, 0, 100) . '...</span>';
+                     } else {
+                        echo $displayValue;
+                     }
+                  }
+
+                  echo '</td>';
+               }
                echo '</tr>';
             }
 
             echo '</tbody>';
             echo '</table>';
             echo '</div>';
-
-            // Légende
-            echo '<div class="mt-3">';
-            echo '<small class="text-muted">';
-            echo '<i class="fas fa-info-circle"></i> ';
-            echo 'Les données sont synchronisées en temps réel avec SharePoint. ';
-            echo 'Toute modification dans SharePoint sera visible ici au prochain chargement.';
-            echo '</small>';
-            echo '</div>';
          }
-
-         echo '</div>';
-         echo '</div>';
 
       } catch (Exception $e) {
          echo '<div class="alert alert-danger">';

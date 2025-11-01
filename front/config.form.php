@@ -11,7 +11,7 @@ Session::checkRight('config', UPDATE);
 $config = new PluginSharepointinfosConfig();
 
 function encryptArray($array) {
-   $include_keys = array('TenantID', 'ClientID', 'ClientSecret', 'Hostname', 'SitePath', 'ListPath');
+   $include_keys = array('TenantID', 'ClientID', 'ClientSecret', 'Hostname', 'SitePath', 'ListPath', 'SiteID', 'ListID');
    $encrypted_array = array();
 
    foreach ($array as $key => $value) {

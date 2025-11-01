@@ -49,7 +49,11 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
      * Fonction pour obtenir l'ID du site SharePoint
      * Gère différents formats d'URL SharePoint
      */
-    public function getSiteId($hostname, $sitePath) {
+    public function getSiteId($hostname, $sitePath, $siteIdOverride = '') {
+        if (!empty($siteIdOverride)) {
+            return trim($siteIdOverride);
+        }
+
         $accessToken = $this->getAccessToken();
 
         // Nettoyer les paramètres
@@ -122,7 +126,11 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
     /**
      * Fonction pour obtenir l'ID d'une liste SharePoint par son nom d'affichage
      */
-    public function getListId($siteId, $listDisplayName) {
+    public function getListId($siteId, $listDisplayName, $listIdOverride = '') {
+        if (!empty($listIdOverride)) {
+            return trim($listIdOverride);
+        }
+
         $accessToken = $this->getAccessToken();
 
         $url = "https://graph.microsoft.com/v1.0/sites/$siteId/lists?$filter=displayName eq '$listDisplayName'";
@@ -272,7 +280,7 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
 
             // Test 2: Obtenir l'ID du site
             try {
-                $siteId = $this->getSiteId($config->Hostname(), $sitePath);
+                $siteId = $this->getSiteId($config->Hostname(), $sitePath, $config->SiteID());
                 if (empty($siteId)) {
                     return array(
                         'status' => false,
@@ -288,9 +296,9 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
 
             // Test 3: Vérifier l'accès à la liste (si ListPath est configuré)
             $listPath = $config->ListPath();
-            if (!empty($listPath)) {
+            if (!empty($listPath) || !empty($config->ListID())) {
                 try {
-                    $listId = $this->getListId($siteId, $listPath);
+                    $listId = $this->getListId($siteId, $listPath, $config->ListID());
                     if (empty($listId)) {
                         return array(
                             'status' => false,
@@ -343,7 +351,7 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
 
         // Test 2: Accès au site SharePoint
         try {
-            $siteId = $this->getSiteId($config->Hostname(), $config->SitePath());
+            $siteId = $this->getSiteId($config->Hostname(), $config->SitePath(), $config->SiteID());
             $results['siteID'] = array(
                 'status' => !empty($siteId) ? 1 : 0,
                 'message' => !empty($siteId) ? 'Site ID obtenu : ' . substr($siteId, 0, 20) . '...' : 'Impossible d\'obtenir le site ID'
@@ -356,12 +364,13 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
         }
 
         // Test 3: Accès à la liste
-        if (!empty($config->ListPath()) && isset($siteId)) {
+        if (( !empty($config->ListPath()) || !empty($config->ListID())) && isset($siteId)) {
             try {
-                $listId = $this->getListId($siteId, $config->ListPath());
+                $listId = $this->getListId($siteId, $config->ListPath(), $config->ListID());
+                $label = !empty($config->ListPath()) ? $config->ListPath() : $listId;
                 $results['listAccess'] = array(
                     'status' => !empty($listId) ? 1 : 0,
-                    'message' => !empty($listId) ? 'Liste accessible : ' . $config->ListPath() : 'Liste non accessible'
+                    'message' => !empty($listId) ? 'Liste accessible : ' . $label : 'Liste non accessible'
                 );
             } catch (Exception $e) {
                 $results['listAccess'] = array(
