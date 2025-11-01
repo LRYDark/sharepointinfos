@@ -16,38 +16,38 @@ function plugin_init_sharepointinfos() { // fonction glpi d'initialisation du pl
    global $PLUGIN_HOOKS, $CFG_GLPI;
 
    $PLUGIN_HOOKS['csrf_compliant']['sharepointinfos'] = true;
-   $PLUGIN_HOOKS['change_profile']['sharepointinfos'] = [PluginSharepointinfosProfile::class, 'initProfile'];
+   $PLUGIN_HOOKS['change_profile']['sharepointinfos'] = array(PluginSharepointinfosProfile::class, 'initProfile');
 
    $plugin = new Plugin();
    if ($plugin->isActivated('sharepointinfos')){ // verification si le plugin sharepointinfos est installé et activé
 
       if (Session::getLoginUserID()) {
-         Plugin::registerClass('PluginSharepointinfosProfile', ['addtabon' => 'Profile']);
+         Plugin::registerClass('PluginSharepointinfosProfile', array('addtabon' => 'Profile'));
       }
 
-      Plugin::registerClass('PluginSharepointinfosTicket', ['addtabon' => 'Ticket']);
+      Plugin::registerClass('PluginSharepointinfosTicket', array('addtabon' => 'Ticket'));
 
       $PLUGIN_HOOKS['config_page']['sharepointinfos'] = 'front/config.form.php'; // initialisation de la page config
-      Plugin::registerClass('PluginSharepointinfosConfig', ['addtabon' => 'Config']); // ajout de la de la class config dans glpi
+      Plugin::registerClass('PluginSharepointinfosConfig', array('addtabon' => 'Config')); // ajout de la de la class config dans glpi
 
-      $PLUGIN_HOOKS['post_show_item']['sharepointinfos'] = ['PluginSharepointinfosTicket', 'postShowItemNewTicketSHAREPOINTINFOS']; // initialisation de la class
-      //$PLUGIN_HOOKS['pre_show_item']['sharepointinfos'] = ['PluginSharepointinfosTicket', 'postShowItemNewTaskSHAREPOINTINFOS']; // initialisation de la class
+      $PLUGIN_HOOKS['post_show_item']['sharepointinfos'] = array('PluginSharepointinfosTicket', 'postShowItemNewTicketSHAREPOINTINFOS'); // initialisation de la class
+      //$PLUGIN_HOOKS['pre_show_item']['sharepointinfos'] = array('PluginSharepointinfosTicket', 'postShowItemNewTaskSHAREPOINTINFOS'); // initialisation de la class
    }
 }
 
 function plugin_version_sharepointinfos() { // fonction version du plugin (verification et affichage des infos de la version)
-   return [
+   return array(
       'name'           => _n('sharepoint infos', 'sharepoint infos', 2, 'sharepointinfos'),
       'version'        => PLUGIN_SHAREPOINTINFOS_VERSION,
       'author'         => 'REINERT Joris',
       'homepage'       => 'https://www.jcd-groupe.fr',
-      'requirements'   => [
-         'glpi' => [
+      'requirements'   => array(
+         'glpi' => array(
             'min' => PLUGIN_SHAREPOINTINFOS_MIN_GLPI,
             'max' => PLUGIN_SHAREPOINTINFOS_MAX_GLPI,
-         ]
-      ]
-   ];
+         )
+      )
+   );
 }
 
 /**

@@ -18,7 +18,7 @@ function plugin_sharepointinfos_uninstall() { // fonction desintallation du plug
    //Delete rights associated with the plugin
    $profileRight = new ProfileRight();
    foreach (PluginSharepointinfosProfile::getAllRights() as $right) {
-      $profileRight->deleteByCriteria(['name' => $right['field']]);
+      $profileRight->deleteByCriteria(array('name' => $right['field']));
    }
    PluginSharepointinfosProfile::removeRightsFromSession();
    PluginSharepointinfosMenu::removeRightsFromSession();

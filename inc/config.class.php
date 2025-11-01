@@ -58,11 +58,11 @@ class PluginSharepointinfosConfig extends CommonDBTM
       $errorcon = "";
       $checkcon ="";
 
-      $config->showFormHeader(['colspan' => 4]);
+      $config->showFormHeader(array('colspan' => 4));
       echo '</table>';
 
       // Test de connexion SharePoint
-      $result = [];
+      $result = array();
       if(!empty($config->TenantID())){
          try {
             $result = $sharepoint->validateSharePointConnection($config->SitePath());
@@ -114,23 +114,23 @@ class PluginSharepointinfosConfig extends CommonDBTM
             <div class="row g-3">
             <div class="col-md-6">
                <label for="TenantID" class="form-label mb-1"><?php echo __('Tenant ID', 'sharepointinfos'); ?></label>
-               <?php echo Html::input('TenantID', ['value' => $config->TenantID(), 'class' => 'form-control', 'id' => 'TenantID']); ?>
+               <?php echo Html::input('TenantID', array('value' => $config->TenantID(), 'class' => 'form-control', 'id' => 'TenantID')); ?>
             </div>
             <div class="col-md-6">
                <label for="ClientID" class="form-label mb-1"><?php echo __('Client ID', 'sharepointinfos'); ?></label>
-               <?php echo Html::input('ClientID', ['value' => $config->ClientID(), 'class' => 'form-control', 'id' => 'ClientID']); ?>
+               <?php echo Html::input('ClientID', array('value' => $config->ClientID(), 'class' => 'form-control', 'id' => 'ClientID')); ?>
             </div>
 
             <div class="col-md-6">
                <label for="ClientSecret" class="form-label mb-1"><?php echo __('Client Secret', 'sharepointinfos'); ?></label>
-               <?php echo Html::input('ClientSecret', ['value' => $config->ClientSecret(), 'class' => 'form-control', 'id' => 'ClientSecret']); ?>
+               <?php echo Html::input('ClientSecret', array('value' => $config->ClientSecret(), 'class' => 'form-control', 'id' => 'ClientSecret')); ?>
             </div>
             <div class="col-md-6">
                <label for="Hostname" class="form-label mb-1">
                   <?php echo __('Nom d\'hôte SharePoint', 'sharepointinfos'); ?>
                   <small class="text-muted">(ex: votreentreprise.sharepoint.com)</small>
                </label>
-               <?php echo Html::input('Hostname', ['value' => $config->Hostname(), 'class' => 'form-control', 'id' => 'Hostname', 'placeholder' => 'globalinfo763.sharepoint.com']); ?>
+               <?php echo Html::input('Hostname', array('value' => $config->Hostname(), 'class' => 'form-control', 'id' => 'Hostname', 'placeholder' => 'globalinfo763.sharepoint.com')); ?>
             </div>
 
             <div class="col-md-6">
@@ -138,7 +138,7 @@ class PluginSharepointinfosConfig extends CommonDBTM
                   <?php echo __('Chemin du Site', 'sharepointinfos'); ?>
                   <small class="text-muted">(ex: /sites/clients)</small>
                </label>
-               <?php echo Html::input('SitePath', ['value' => $config->SitePath(), 'class' => 'form-control', 'id' => 'SitePath', 'placeholder' => '/sites/clients']); ?>
+               <?php echo Html::input('SitePath', array('value' => $config->SitePath(), 'class' => 'form-control', 'id' => 'SitePath', 'placeholder' => '/sites/clients')); ?>
                <small class="form-text text-muted">Copier depuis l'URL : https://votreentreprise.sharepoint.com<strong>/sites/clients</strong>/...</small>
             </div>
 
@@ -147,7 +147,7 @@ class PluginSharepointinfosConfig extends CommonDBTM
                   <?php echo __('Nom de la Liste SharePoint', 'sharepointinfos'); ?>
                   <small class="text-muted">(nom exact affiché dans SharePoint)</small>
                </label>
-               <?php echo Html::input('ListPath', ['value' => $config->ListPath(), 'class' => 'form-control', 'id' => 'ListPath', 'placeholder' => 'Liste techno']); ?>
+               <?php echo Html::input('ListPath', array('value' => $config->ListPath(), 'class' => 'form-control', 'id' => 'ListPath', 'placeholder' => 'Liste techno')); ?>
                <small class="form-text text-muted">Le nom exact tel qu'affiché dans SharePoint (sensible à la casse)</small>
             </div>
             </div>
@@ -177,17 +177,17 @@ class PluginSharepointinfosConfig extends CommonDBTM
       // ---------- MODAL DE TEST DE CONNEXION ----------
       $result = $sharepoint->checkSharePointAccess();
 
-      $statusIcons = [
-      1 => '<i class="fa fa-check-circle text-success"></i>', // ✅ Succès
-      0 => '<i class="fa fa-times-circle text-danger"></i>'   // ❌ Échec
-      ];
+      $statusIcons = array(
+         1 => '<i class="fa fa-check-circle text-success"></i>', // ✅ Succès
+         0 => '<i class="fa fa-times-circle text-danger"></i>'   // ❌ Échec
+      );
 
-      $fields = [
-      'accessToken'      => __('Token d\'accès', 'sharepointinfos'),
-      'siteID'           => __('Site ID', 'sharepointinfos'),
-      'listAccess'       => __('Accès à la Liste SharePoint', 'sharepointinfos'),
-      'graphQuery'       => __('Microsoft Graph Query', 'sharepointinfos')
-      ];
+      $fields = array(
+         'accessToken'      => __('Token d\'accès', 'sharepointinfos'),
+         'siteID'           => __('Site ID', 'sharepointinfos'),
+         'listAccess'       => __('Accès à la Liste SharePoint', 'sharepointinfos'),
+         'graphQuery'       => __('Microsoft Graph Query', 'sharepointinfos')
+      );
       ?>
 
       <div class="modal fade" id="customModal" tabindex="-1" aria-labelledby="AddSharepointinfosModalLabel" aria-hidden="true">
@@ -225,9 +225,9 @@ class PluginSharepointinfosConfig extends CommonDBTM
                   if (!isset($result[$key])) {
                   continue;
                   }
-                  $status  = (int)($result[$key]['status'] ?? 0);
-                  $message = (string)($result[$key]['message'] ?? '');
-                  $icon    = $statusIcons[$status] ?? $statusIcons[0];
+                  $status  = (int)(isset($result[$key]['status']) ? $result[$key]['status'] : 0);
+                  $message = (string)(isset($result[$key]['message']) ? $result[$key]['message'] : '');
+                  $icon    = isset($statusIcons[$status]) ? $statusIcons[$status] : $statusIcons[0];
 
                   echo "<li class='list-group-item'>";
                   echo "<div class='row align-items-center gy-1'>";
@@ -277,18 +277,18 @@ class PluginSharepointinfosConfig extends CommonDBTM
 
       <?php
 
-      $config->showFormButtons(['candel' => false]);
+      $config->showFormButtons(array('candel' => false));
       return false;
    }
 
    // --- Counter Invoice ---
    // Fonctions pour les champs SharePoint (cryptés)
-   function TenantID()      { return PluginSharepointinfosCrypto::decrypt($this->fields['TenantID']      ?? ''); }
-   function ClientID()      { return PluginSharepointinfosCrypto::decrypt($this->fields['ClientID']      ?? ''); }
-   function ClientSecret()  { return PluginSharepointinfosCrypto::decrypt($this->fields['ClientSecret']  ?? ''); }
-   function Hostname()      { return PluginSharepointinfosCrypto::decrypt($this->fields['Hostname']      ?? ''); }
-   function SitePath()      { return PluginSharepointinfosCrypto::decrypt($this->fields['SitePath']      ?? ''); }
-   function ListPath()      { return PluginSharepointinfosCrypto::decrypt($this->fields['ListPath']      ?? ''); }
+   function TenantID()      { return PluginSharepointinfosCrypto::decrypt(isset($this->fields['TenantID']) ? $this->fields['TenantID'] : ''); }
+   function ClientID()      { return PluginSharepointinfosCrypto::decrypt(isset($this->fields['ClientID']) ? $this->fields['ClientID'] : ''); }
+   function ClientSecret()  { return PluginSharepointinfosCrypto::decrypt(isset($this->fields['ClientSecret']) ? $this->fields['ClientSecret'] : ''); }
+   function Hostname()      { return PluginSharepointinfosCrypto::decrypt(isset($this->fields['Hostname']) ? $this->fields['Hostname'] : ''); }
+   function SitePath()      { return PluginSharepointinfosCrypto::decrypt(isset($this->fields['SitePath']) ? $this->fields['SitePath'] : ''); }
+   function ListPath()      { return PluginSharepointinfosCrypto::decrypt(isset($this->fields['ListPath']) ? $this->fields['ListPath'] : ''); }
 
    function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
    {
@@ -341,7 +341,7 @@ class PluginSharepointinfosConfig extends CommonDBTM
                   PRIMARY KEY (`id`)
          ) ENGINE=InnoDB DEFAULT CHARSET={$default_charset} COLLATE={$default_collation} ROW_FORMAT=DYNAMIC;";
          $DB->query($query) or die($DB->error());
-         $config->add(['id' => 1,]);
+         $config->add(array('id' => 1));
       }
    }
 

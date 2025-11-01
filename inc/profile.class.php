@@ -29,7 +29,7 @@ class PluginSharepointinfosProfile extends Profile {
    function showForm($profiles_id = 0, $openform = TRUE, $closeform = TRUE) {
 
       echo "<div class='firstbloc'>";
-      if (($canedit = Session::haveRightsOr(self::$rightname, [CREATE, UPDATE, PURGE])) && $openform) {
+      if (($canedit = Session::haveRightsOr(self::$rightname, array(CREATE, UPDATE, PURGE))) && $openform) {
          $profile = new Profile();
          echo "<form method='post' action='" . $profile->getFormURL() . "'>";
       }
@@ -38,13 +38,13 @@ class PluginSharepointinfosProfile extends Profile {
       $profile->getFromDB($profiles_id);
 
       $rights = $this->getAllRights();
-      $profile->displayRightsChoiceMatrix($rights, ['canedit'       => $canedit,
+      $profile->displayRightsChoiceMatrix($rights, array('canedit'       => $canedit,
                                                     'default_class' => 'tab_bg_2',
-                                                    'title'         => __('General')]);
+                                                    'title'         => __('General')));
       if ($canedit && $closeform) {
          echo "<div class='center'>";
-         echo Html::hidden('id', ['value' => $profiles_id]);
-         echo Html::submit(_sx('button', 'Save'), ['name' => 'update', 'class' => 'btn btn-primary']);
+         echo Html::hidden('id', array('value' => $profiles_id));
+         echo Html::submit(_sx('button', 'Save'), array('name' => 'update', 'class' => 'btn btn-primary'));
          echo "</div>\n";
          Html::closeForm();
       }
@@ -52,23 +52,23 @@ class PluginSharepointinfosProfile extends Profile {
    }
 
    static function getAllRights($all = false) {
-      $rights = [
-         ['itemtype' => 'PluginSharepointinfosConfig',
+      $rights = array(
+         array('itemtype' => 'PluginSharepointinfosConfig',
             'label'    => __('Ajout de documents à signer', 'sharepointinfos'),
             'field'    => 'plugin_sharepointinfos_add',
-            'rights'   => [READ    => __('Read'), UPDATE  => __('Update / Add / Delete')]
-         ],
-         ['itemtype' => 'PluginSharepointinfosConfig',
+            'rights'   => array(READ    => __('Read'), UPDATE  => __('Update / Add / Delete'))
+         ),
+         array('itemtype' => 'PluginSharepointinfosConfig',
             'label'    => __('Documents à signer', 'sharepointinfos'),
             'field'    => 'plugin_sharepointinfos_sign',
-            'rights'   => [READ    => __('Read'), CREATE  => __('Signer'), PURGE  => __('Purge')]
-         ],
-         ['itemtype' => 'PluginSharepointinfosConfig',
+            'rights'   => array(READ    => __('Read'), CREATE  => __('Signer'), PURGE  => __('Purge'))
+         ),
+         array('itemtype' => 'PluginSharepointinfosConfig',
             'label'    => __('Tous les Documents', 'sharepointinfos'),
             'field'    => 'plugin_sharepointinfos',
-            'rights'   => [READ    => __('Read')]
-         ],
-      ];
+            'rights'   => array(READ    => __('Read'))
+         ),
+      );
 
       return $rights;
    }
@@ -105,8 +105,8 @@ class PluginSharepointinfosProfile extends Profile {
       //Add new rights in glpi_profilerights table
       foreach ($profile->getAllRights(true) as $data) {
          if ($dbu->countElementsInTable("glpi_profilerights",
-                                        ["name" => $data['field']]) == 0) {
-            ProfileRight::addProfileRights([$data['field']]);
+                                        array("name" => $data['field'])) == 0) {
+            ProfileRight::addProfileRights(array($data['field']));
          }
       }
 
@@ -135,9 +135,9 @@ class PluginSharepointinfosProfile extends Profile {
 
    static function createFirstAccess($profiles_id) {
       self::addDefaultProfileInfos($profiles_id,
-                                   ['plugin_sharepointinfos_add'          => ALLSTANDARDRIGHT,
+                                   array('plugin_sharepointinfos_add'          => ALLSTANDARDRIGHT,
                                     'plugin_sharepointinfos_sign'         => ALLSTANDARDRIGHT,
-                                    'plugin_sharepointinfos'              => ALLSTANDARDRIGHT], true);
+                                    'plugin_sharepointinfos'              => ALLSTANDARDRIGHT), true);
    }
 
    static function removeRightsFromSession() {
@@ -151,7 +151,7 @@ class PluginSharepointinfosProfile extends Profile {
    static function removeRightsFromDB() {
       $plugprof = new ProfileRight();
       foreach (self::getAllRights(true) as $right) {
-         $plugprof->deleteByCriteria(['name' => $right['field']]);
+         $plugprof->deleteByCriteria(array('name' => $right['field']));
       }
    }
 
@@ -165,16 +165,18 @@ class PluginSharepointinfosProfile extends Profile {
 
       foreach ($rights as $right => $value) {
          if ($dbu->countElementsInTable('glpi_profilerights',
-                                        ["profiles_id" => $profiles_id,
-                                         "name"        => $right]) && $drop_existing) {
-            $profileRight->deleteByCriteria(['profiles_id' => $profiles_id, 'name' => $right]);
+                                        array("profiles_id" => $profiles_id,
+                                         "name"        => $right)) && $drop_existing) {
+            $profileRight->deleteByCriteria(array('profiles_id' => $profiles_id, 'name' => $right));
          }
          if (!$dbu->countElementsInTable('glpi_profilerights',
-                                         ["profiles_id" => $profiles_id,
-                                          "name"        => $right])) {
-            $myright['profiles_id'] = $profiles_id;
-            $myright['name']        = $right;
-            $myright['rights']      = $value;
+                                         array("profiles_id" => $profiles_id,
+                                          "name"        => $right))) {
+            $myright = array(
+               'profiles_id' => $profiles_id,
+               'name'        => $right,
+               'rights'      => $value
+            );
             $profileRight->add($myright);
 
             //Add right to the current session

@@ -15,12 +15,12 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
         $clientSecret   = $config->ClientSecret();
 
         $token_url = "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token";
-        $token_data = [
+        $token_data = array(
             'grant_type' => 'client_credentials',
             'client_id' => $clientId,
             'client_secret' => $clientSecret,
             'scope' => 'https://graph.microsoft.com/.default'
-        ];
+        );
 
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $token_url);
@@ -64,10 +64,10 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
         // Méthode 1 : Essayer avec hostname:sitePath (format standard)
         $url = "https://graph.microsoft.com/v1.0/sites/$hostname:$sitePath";
 
-        $headers = [
+        $headers = array(
             "Authorization: Bearer $accessToken",
             "Content-Type: application/json"
-        ];
+        );
 
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
@@ -127,10 +127,10 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
 
         $url = "https://graph.microsoft.com/v1.0/sites/$siteId/lists?$filter=displayName eq '$listDisplayName'";
 
-        $headers = [
+        $headers = array(
             "Authorization: Bearer $accessToken",
             "Content-Type: application/json"
-        ];
+        );
 
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
@@ -160,10 +160,10 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
 
         $url = "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$listId/columns";
 
-        $headers = [
+        $headers = array(
             "Authorization: Bearer $accessToken",
             "Content-Type: application/json"
-        ];
+        );
 
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
@@ -202,13 +202,13 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
      * @param array $expand - Colonnes à étendre (ex: ['fields'])
      * @return array - Les éléments de la liste
      */
-    public function getListItems($siteId, $listId, $filter = null, $expand = ['fields']) {
+    public function getListItems($siteId, $listId, $filter = null, $expand = array('fields')) {
         $accessToken = $this->getAccessToken();
 
         // Construction de l'URL avec paramètres optionnels
         $url = "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$listId/items";
 
-        $params = [];
+        $params = array();
         if (!empty($expand)) {
             $params[] = '$expand=' . implode(',', $expand);
         }
@@ -220,10 +220,10 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
             $url .= '?' . implode('&', $params);
         }
 
-        $headers = [
+        $headers = array(
             "Authorization: Bearer $accessToken",
             "Content-Type: application/json"
-        ];
+        );
 
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
@@ -264,26 +264,26 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
             // Test 1: Obtenir le token
             $accessToken = $this->getAccessToken();
             if (empty($accessToken)) {
-                return [
+                return array(
                     'status' => false,
                     'message' => 'Impossible d\'obtenir un token d\'accès. Vérifiez vos identifiants.'
-                ];
+                );
             }
 
             // Test 2: Obtenir l'ID du site
             try {
                 $siteId = $this->getSiteId($config->Hostname(), $sitePath);
                 if (empty($siteId)) {
-                    return [
+                    return array(
                         'status' => false,
                         'message' => 'Impossible d\'obtenir l\'ID du site. Vérifiez le hostname et le chemin du site.'
-                    ];
+                    );
                 }
             } catch (Exception $e) {
-                return [
+                return array(
                     'status' => false,
                     'message' => 'Erreur lors de la récupération du site : ' . $e->getMessage()
-                ];
+                );
             }
 
             // Test 3: Vérifier l'accès à la liste (si ListPath est configuré)
@@ -292,30 +292,30 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
                 try {
                     $listId = $this->getListId($siteId, $listPath);
                     if (empty($listId)) {
-                        return [
+                        return array(
                             'status' => false,
                             'message' => 'Impossible d\'accéder à la liste. Vérifiez le nom de la liste.'
-                        ];
+                        );
                     }
                 } catch (Exception $e) {
-                    return [
+                    return array(
                         'status' => false,
                         'message' => 'Erreur lors de l\'accès à la liste : ' . $e->getMessage()
-                    ];
+                    );
                 }
             }
 
-            return [
+            return array(
                 'status' => true,
                 'message' => 'Connexion SharePoint réussie !',
-                'siteId' => $siteId ?? null
-            ];
+                'siteId' => isset($siteId) ? $siteId : null
+            );
 
         } catch (Exception $e) {
-            return [
+            return array(
                 'status' => false,
                 'message' => 'Erreur inattendue : ' . $e->getMessage()
-            ];
+            );
         }
     }
 
@@ -324,58 +324,58 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
      * Utilisé pour le modal de test de connexion
      */
     public function checkSharePointAccess() {
-        $results = [];
+        $results = array();
         $config = new PluginSharepointinfosConfig();
 
         // Test 1: Token d'accès
         try {
             $accessToken = $this->getAccessToken();
-            $results['accessToken'] = [
+            $results['accessToken'] = array(
                 'status' => !empty($accessToken) ? 1 : 0,
                 'message' => !empty($accessToken) ? 'Token obtenu avec succès' : 'Échec de l\'obtention du token'
-            ];
+            );
         } catch (Exception $e) {
-            $results['accessToken'] = [
+            $results['accessToken'] = array(
                 'status' => 0,
                 'message' => 'Erreur : ' . $e->getMessage()
-            ];
+            );
         }
 
         // Test 2: Accès au site SharePoint
         try {
             $siteId = $this->getSiteId($config->Hostname(), $config->SitePath());
-            $results['siteID'] = [
+            $results['siteID'] = array(
                 'status' => !empty($siteId) ? 1 : 0,
                 'message' => !empty($siteId) ? 'Site ID obtenu : ' . substr($siteId, 0, 20) . '...' : 'Impossible d\'obtenir le site ID'
-            ];
+            );
         } catch (Exception $e) {
-            $results['siteID'] = [
+            $results['siteID'] = array(
                 'status' => 0,
                 'message' => 'Erreur : ' . $e->getMessage()
-            ];
+            );
         }
 
         // Test 3: Accès à la liste
         if (!empty($config->ListPath()) && isset($siteId)) {
             try {
                 $listId = $this->getListId($siteId, $config->ListPath());
-                $results['listAccess'] = [
+                $results['listAccess'] = array(
                     'status' => !empty($listId) ? 1 : 0,
                     'message' => !empty($listId) ? 'Liste accessible : ' . $config->ListPath() : 'Liste non accessible'
-                ];
+                );
             } catch (Exception $e) {
-                $results['listAccess'] = [
+                $results['listAccess'] = array(
                     'status' => 0,
                     'message' => 'Erreur : ' . $e->getMessage()
-                ];
+                );
             }
         }
 
         // Test 4: Microsoft Graph Query
-        $results['graphQuery'] = [
+        $results['graphQuery'] = array(
             'status' => isset($results['accessToken']['status']) && $results['accessToken']['status'] == 1 ? 1 : 0,
             'message' => isset($results['accessToken']['status']) && $results['accessToken']['status'] == 1 ? 'Microsoft Graph API accessible' : 'Microsoft Graph API non accessible'
-        ];
+        );
 
         return $results;
     }

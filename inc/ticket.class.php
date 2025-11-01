@@ -76,27 +76,48 @@ class PluginSharepointinfosTicket extends CommonDBTM {
          $columns = $sharepoint->getListColumns($siteId, $listId);
 
          // Filtrer les colonnes à afficher (exclure les colonnes système)
-         $displayColumns = [];
-         $excludedColumns = ['ContentType', 'Attachments', '_UIVersionString', 'Edit', 'LinkTitle',
-                             'ItemChildCount', 'FolderChildCount', 'AppAuthor', 'AppEditor',
-                             '_ComplianceFlags', '_ComplianceTag', '_ComplianceTagWrittenTime',
-                             '_ComplianceTagUserId', '_IsRecord', 'OData__ColorTag', 'ComplianceAssetId'];
+         $displayColumns = array();
+         $excludedColumns = array(
+            'ContentType',
+            'Attachments',
+            '_UIVersionString',
+            'Edit',
+            'LinkTitle',
+            'ItemChildCount',
+            'FolderChildCount',
+            'AppAuthor',
+            'AppEditor',
+            '_ComplianceFlags',
+            '_ComplianceTag',
+            '_ComplianceTagWrittenTime',
+            '_ComplianceTagUserId',
+            '_IsRecord',
+            'OData__ColorTag',
+            'ComplianceAssetId'
+         );
 
          foreach ($columns as $column) {
-            $columnName = $column['name'];
+            $columnName = isset($column['name']) ? $column['name'] : '';
             $isHidden = isset($column['hidden']) && $column['hidden'] === true;
+
+            if (empty($columnName)) {
+               continue;
+            }
 
             // Exclure les colonnes système et cachées
             if (!in_array($columnName, $excludedColumns) && !$isHidden) {
-               $displayColumns[] = [
+               $displayColumns[] = array(
                   'name' => $columnName,
-                  'displayName' => $column['displayName'] ?? $columnName
-               ];
+                  'displayName' => isset($column['displayName']) && !empty($column['displayName'])
+                     ? $column['displayName']
+                     : $columnName
+               );
             }
          }
 
-         // Récupérer tous les éléments de la liste (sans filtre)
-         $items = $sharepoint->getListItems($siteId, $listId, null);
+         // Récupérer uniquement les éléments correspondant à l'entité courante
+         $filterEntityName = str_replace("'", "''", $entityName);
+         $items = $sharepoint->getListItems($siteId, $listId, "fields/Title eq '$filterEntityName'");
 
          // Afficher le tableau
          echo '<div class="card">';
@@ -109,7 +130,9 @@ class PluginSharepointinfosTicket extends CommonDBTM {
          echo '<div class="card-body">';
 
          if (empty($items)) {
-            echo '<div class="alert alert-info">Aucun élément dans la liste SharePoint.</div>';
+            echo '<div class="alert alert-info">';
+            echo 'Aucun élément SharePoint ne correspond à l\'entité &laquo; ' . htmlspecialchars($entityName) . ' &raquo;.';
+            echo '</div>';
          } else {
             echo '<div class="table-responsive">';
             echo '<table class="table table-striped table-hover table-sm">';
@@ -118,7 +141,8 @@ class PluginSharepointinfosTicket extends CommonDBTM {
 
             // Afficher les en-têtes des colonnes
             foreach ($displayColumns as $column) {
-               echo '<th>' . htmlspecialchars($column['displayName']) . '</th>';
+               $headerLabel = isset($column['displayName']) ? $column['displayName'] : '';
+               echo '<th>' . htmlspecialchars($headerLabel) . '</th>';
             }
 
             echo '</tr>';
@@ -129,10 +153,15 @@ class PluginSharepointinfosTicket extends CommonDBTM {
             foreach ($items as $item) {
                echo '<tr>';
 
-               if (isset($item['fields'])) {
+               if (isset($item['fields']) && is_array($item['fields'])) {
                   foreach ($displayColumns as $column) {
-                     $fieldName = $column['name'];
-                     $fieldValue = $item['fields'][$fieldName] ?? '';
+                     $fieldName = isset($column['name']) ? $column['name'] : '';
+                     if (empty($fieldName)) {
+                        echo '<td><span class="text-muted">-</span></td>';
+                        continue;
+                     }
+
+                     $fieldValue = isset($item['fields'][$fieldName]) ? $item['fields'][$fieldName] : '';
 
                      echo '<td>';
 
