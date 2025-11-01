@@ -57,20 +57,23 @@ class PluginSharepointinfosConfig extends CommonDBTM
       $sharepoint = new PluginSharepointinfosSharepoint();
       $errorcon = "";
       $checkcon ="";
+      $discoveredSites = array();
+      $discoveryError = '';
+      $hasCredentials = !empty($config->TenantID()) && !empty($config->ClientID()) && !empty($config->ClientSecret());
 
       $config->showFormHeader(array('colspan' => 4));
       echo '</table>';
 
       // Test de connexion SharePoint
       $result = array();
-      if(!empty($config->TenantID())){
+      if($hasCredentials){
          try {
-            $result = $sharepoint->validateSharePointConnection($config->SitePath());
+            $result = $sharepoint->validateSharePointConnection();
             if (isset($result['status']) && $result['status'] === true) {
                $checkcon = 'Connexion API : <i class="fa fa-check-circle fa-xl text-success"></i></i>' . "\n";
                try {
                   $siteId = '';
-                  $siteId = $sharepoint->getSiteId($config->Hostname(), $config->SitePath());
+                  $siteId = !empty($config->SiteID()) ? $config->SiteID() : $sharepoint->getSiteId($config->Hostname(), $config->SitePath());
                } catch (Exception $e) {
                   $errorcon = '  <i class="fa-solid fa-circle-info fa-xl text-primary" data-bs-toggle="tooltip" data-bs-placement="top" title="Erreur : '.$e->getMessage().'"></i>';
                }
@@ -80,6 +83,12 @@ class PluginSharepointinfosConfig extends CommonDBTM
             }
          } catch (Exception $e) {
             $errorcon = '  <i class="fa-solid fa-circle-info fa-xl text-primary" data-bs-toggle="tooltip" data-bs-placement="top" title="Erreur inattendue : '.$e->getMessage().'"></i>';
+         }
+
+         try {
+            $discoveredSites = $sharepoint->discoverSites();
+         } catch (Exception $e) {
+            $discoveryError = $e->getMessage();
          }
       }
       ?>
@@ -92,14 +101,13 @@ class PluginSharepointinfosConfig extends CommonDBTM
             </h5>
          </div>
          <div class="card-body">
-            <p class="mb-2"><strong>À partir de votre URL SharePoint :</strong></p>
-            <code class="d-block mb-3">https://<span class="text-danger">globalinfo763.sharepoint.com</span><span class="text-success">/sites/clients</span>/Lists/<span class="text-primary">Liste%20techno</span>/AllItems.aspx</code>
+            <p class="mb-3"><?php echo __('Renseignez vos identifiants Azure AD puis sélectionnez le site et la liste SharePoint directement depuis les menus déroulants.', 'sharepointinfos'); ?></p>
 
-            <ul class="mb-0">
-               <li><strong>Hostname :</strong> <span class="text-danger">globalinfo763.sharepoint.com</span> (partie avant /sites/...)</li>
-               <li><strong>Chemin du Site :</strong> <span class="text-success">/sites/clients</span> (de /sites jusqu'au nom du site)</li>
-               <li><strong>Nom de la Liste :</strong> <span class="text-primary">Liste techno</span> (nom exact sans %20, avec espaces)</li>
-            </ul>
+            <ol class="mb-0 ps-3">
+               <li><?php echo __('Complétez le Tenant ID, le Client ID et le Client Secret fournis par Azure.', 'sharepointinfos'); ?></li>
+               <li><?php echo __('Une fois la connexion établie, choisissez le site SharePoint cible dans la liste proposée.', 'sharepointinfos'); ?></li>
+               <li><?php echo __('Sélectionnez enfin la liste contenant vos données (ex : Liste techno).', 'sharepointinfos'); ?></li>
+            </ol>
          </div>
       </div>
 
@@ -114,60 +122,87 @@ class PluginSharepointinfosConfig extends CommonDBTM
             <div class="row g-3">
             <div class="col-md-6">
                <label for="TenantID" class="form-label mb-1"><?php echo __('Tenant ID', 'sharepointinfos'); ?></label>
-               <?php echo Html::input('TenantID', array('value' => $config->TenantID(), 'class' => 'form-control', 'id' => 'TenantID')); ?>
+               <?php echo Html::input('TenantID', array('value' => $config->TenantID(), 'class' => 'form-control', 'id' => 'TenantID', 'required' => 'required')); ?>
             </div>
             <div class="col-md-6">
                <label for="ClientID" class="form-label mb-1"><?php echo __('Client ID', 'sharepointinfos'); ?></label>
-               <?php echo Html::input('ClientID', array('value' => $config->ClientID(), 'class' => 'form-control', 'id' => 'ClientID')); ?>
+               <?php echo Html::input('ClientID', array('value' => $config->ClientID(), 'class' => 'form-control', 'id' => 'ClientID', 'required' => 'required')); ?>
             </div>
 
             <div class="col-md-6">
                <label for="ClientSecret" class="form-label mb-1"><?php echo __('Client Secret', 'sharepointinfos'); ?></label>
-               <?php echo Html::input('ClientSecret', array('value' => $config->ClientSecret(), 'class' => 'form-control', 'id' => 'ClientSecret')); ?>
+               <?php echo Html::input('ClientSecret', array('value' => $config->ClientSecret(), 'class' => 'form-control', 'id' => 'ClientSecret', 'required' => 'required', 'type' => 'password')); ?>
             </div>
+
+            <?php
+            echo Html::hidden('Hostname', array('value' => $config->Hostname(), 'id' => 'Hostname'));
+            echo Html::hidden('SitePath', array('value' => $config->SitePath(), 'id' => 'SitePath'));
+            echo Html::hidden('SiteID', array('value' => $config->SiteID(), 'id' => 'SiteID'));
+            echo Html::hidden('ListPath', array('value' => $config->ListPath(), 'id' => 'ListPath'));
+            echo Html::hidden('ListID', array('value' => $config->ListID(), 'id' => 'ListID'));
+            ?>
+
+            <?php if (!$hasCredentials) { ?>
+            <div class="col-12">
+               <div class="alert alert-info mb-0"><?php echo __('Renseignez vos identifiants Azure pour découvrir automatiquement vos sites SharePoint.', 'sharepointinfos'); ?></div>
+            </div>
+            <?php } elseif (!empty($discoveryError)) { ?>
+            <div class="col-12">
+               <div class="alert alert-danger mb-0"><?php echo sprintf(__('Impossible de récupérer la liste des sites : %s', 'sharepointinfos'), htmlspecialchars($discoveryError)); ?></div>
+            </div>
+            <?php } else { ?>
             <div class="col-md-6">
-               <label for="Hostname" class="form-label mb-1">
-                  <?php echo __('Nom d\'hôte SharePoint', 'sharepointinfos'); ?>
-                  <small class="text-muted">(ex: votreentreprise.sharepoint.com)</small>
-               </label>
-               <?php echo Html::input('Hostname', array('value' => $config->Hostname(), 'class' => 'form-control', 'id' => 'Hostname', 'placeholder' => 'globalinfo763.sharepoint.com')); ?>
+               <label for="SharePointSiteSelector" class="form-label mb-1"><?php echo __('Site SharePoint', 'sharepointinfos'); ?></label>
+               <select class="form-select" id="SharePointSiteSelector" data-placeholder="<?php echo htmlspecialchars(__('Sélectionnez un site', 'sharepointinfos')); ?>">
+                  <option value=""><?php echo __('Sélectionnez un site', 'sharepointinfos'); ?></option>
+                  <?php foreach ($discoveredSites as $site) { ?>
+                     <?php
+                        $siteLabel = isset($site['displayName']) ? $site['displayName'] : $site['id'];
+                        $siteLocation = isset($site['hostname']) ? $site['hostname'] : '';
+                        if (isset($site['sitePath']) && $site['sitePath'] !== '') {
+                           $siteLocation .= $site['sitePath'];
+                        }
+                        if (!empty($siteLocation)) {
+                           $siteLabel .= ' (' . $siteLocation . ')';
+                        }
+                     ?>
+                     <option value="<?php echo htmlspecialchars($site['id']); ?>" data-hostname="<?php echo htmlspecialchars($site['hostname']); ?>" data-site-path="<?php echo htmlspecialchars($site['sitePath']); ?>">
+                        <?php echo htmlspecialchars($siteLabel); ?>
+                     </option>
+                  <?php } ?>
+               </select>
+               <small class="form-text text-muted"><?php echo __('Le site sélectionné définit automatiquement le nom d\'hôte et le chemin.', 'sharepointinfos'); ?></small>
             </div>
 
             <div class="col-md-6">
-               <label for="SitePath" class="form-label mb-1">
-                  <?php echo __('Chemin du Site', 'sharepointinfos'); ?>
-                  <small class="text-muted">(ex: /sites/clients)</small>
-               </label>
-               <?php echo Html::input('SitePath', array('value' => $config->SitePath(), 'class' => 'form-control', 'id' => 'SitePath', 'placeholder' => '/sites/clients')); ?>
-               <small class="form-text text-muted">Copier depuis l'URL : https://votreentreprise.sharepoint.com<strong>/sites/clients</strong>/...</small>
+               <label for="SharePointListSelector" class="form-label mb-1"><?php echo __('Liste SharePoint', 'sharepointinfos'); ?></label>
+               <select class="form-select" id="SharePointListSelector" data-placeholder="<?php echo htmlspecialchars(__('Sélectionnez une liste', 'sharepointinfos')); ?>" disabled>
+                  <option value=""><?php echo __('Sélectionnez une liste', 'sharepointinfos'); ?></option>
+               </select>
+               <small class="form-text text-muted"><?php echo __('Seules les listes disponibles sur le site choisi sont affichées.', 'sharepointinfos'); ?></small>
             </div>
+            <?php } ?>
 
-            <div class="col-md-6">
-               <label for="SiteID" class="form-label mb-1">
-                  <?php echo __('Identifiant complet du site', 'sharepointinfos'); ?>
-                  <small class="text-muted">(optionnel si le chemin est valide)</small>
-               </label>
-               <?php echo Html::input('SiteID', array('value' => $config->SiteID(), 'class' => 'form-control', 'id' => 'SiteID', 'placeholder' => 'globalinfo763.sharepoint.com,XXXX,XXXX')); ?>
-               <small class="form-text text-muted">Utiliser l'identifiant renvoyé par Microsoft Graph si la détection automatique échoue.</small>
+            <?php if (!empty($config->SiteID()) && !empty($config->ListID())) { ?>
+            <div class="col-12">
+               <?php
+                  $currentSiteLabel = $config->Hostname();
+                  if (!empty($config->SitePath())) {
+                     $currentSiteLabel .= $config->SitePath();
+                  }
+                  if (empty($currentSiteLabel)) {
+                     $currentSiteLabel = $config->SiteID();
+                  }
+                  $currentListLabel = !empty($config->ListPath()) ? $config->ListPath() : $config->ListID();
+               ?>
+               <div class="alert alert-secondary mb-0 small">
+                  <?php echo __('Site actuellement sélectionné : ', 'sharepointinfos'); ?>
+                  <strong><?php echo htmlspecialchars($currentSiteLabel); ?></strong><br>
+                  <?php echo __('Liste sélectionnée : ', 'sharepointinfos'); ?>
+                  <strong><?php echo htmlspecialchars($currentListLabel); ?></strong>
+               </div>
             </div>
-
-            <div class="col-md-6">
-               <label for="ListPath" class="form-label mb-1">
-                  <?php echo __('Nom de la Liste SharePoint', 'sharepointinfos'); ?>
-                  <small class="text-muted">(nom exact affiché dans SharePoint)</small>
-               </label>
-               <?php echo Html::input('ListPath', array('value' => $config->ListPath(), 'class' => 'form-control', 'id' => 'ListPath', 'placeholder' => 'Liste techno')); ?>
-               <small class="form-text text-muted">Le nom exact tel qu'affiché dans SharePoint (sensible à la casse)</small>
-            </div>
-
-            <div class="col-md-6">
-               <label for="ListID" class="form-label mb-1">
-                  <?php echo __('Identifiant unique de la liste', 'sharepointinfos'); ?>
-                  <small class="text-muted">(optionnel si le nom est reconnu)</small>
-               </label>
-               <?php echo Html::input('ListID', array('value' => $config->ListID(), 'class' => 'form-control', 'id' => 'ListID', 'placeholder' => 'd0ee3770-1eb1-40ed-96a2-3bb2b7664891')); ?>
-               <small class="form-text text-muted">Coller l'ID récupéré via Microsoft Graph pour éviter toute ambiguïté.</small>
-            </div>
+            <?php } ?>
             </div>
          </div>
       </div>
@@ -277,12 +312,158 @@ class PluginSharepointinfosConfig extends CommonDBTM
       </div>
       </div>
 
+      <?php $sitesJson = json_encode($discoveredSites, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>
       <script>
-         // Bootstrap 5 : init tooltips quand le DOM est prêt
+         // Bootstrap 5 : init tooltips quand le DOM est prêt et initialiser les sélecteurs SharePoint
          document.addEventListener('DOMContentLoaded', function () {
-         document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
-            new bootstrap.Tooltip(el);
-         });
+            document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+               new bootstrap.Tooltip(el);
+            });
+
+            var discoveredSites = <?php echo $sitesJson ? $sitesJson : '[]'; ?>;
+            if (!Array.isArray(discoveredSites) || discoveredSites.length === 0) {
+               return;
+            }
+
+            var siteSelect = document.getElementById('SharePointSiteSelector');
+            var listSelect = document.getElementById('SharePointListSelector');
+            if (!siteSelect || !listSelect) {
+               return;
+            }
+
+            var hiddenHostname = document.getElementById('Hostname');
+            var hiddenSitePath = document.getElementById('SitePath');
+            var hiddenSiteId = document.getElementById('SiteID');
+            var hiddenListName = document.getElementById('ListPath');
+            var hiddenListId = document.getElementById('ListID');
+
+            var listsBySite = {};
+            discoveredSites.forEach(function (site) {
+               listsBySite[site.id] = Array.isArray(site.lists) ? site.lists : [];
+            });
+
+            var initialSiteId = hiddenSiteId && hiddenSiteId.value ? hiddenSiteId.value : '';
+            if (!initialSiteId && hiddenHostname && hiddenSitePath) {
+               discoveredSites.forEach(function (site) {
+                  if (initialSiteId) {
+                     return;
+                  }
+                  if (site.hostname === hiddenHostname.value && site.sitePath === hiddenSitePath.value) {
+                     initialSiteId = site.id;
+                  }
+               });
+            }
+
+            var initialListId = hiddenListId && hiddenListId.value ? hiddenListId.value : '';
+            var initialListName = hiddenListName && hiddenListName.value ? hiddenListName.value : '';
+
+            function updateHiddenSite(site) {
+               if (!hiddenHostname || !hiddenSitePath || !hiddenSiteId) {
+                  return;
+               }
+               if (site) {
+                  hiddenHostname.value = site.hostname || '';
+                  hiddenSitePath.value = site.sitePath || '';
+                  hiddenSiteId.value = site.id || '';
+               } else {
+                  hiddenHostname.value = '';
+                  hiddenSitePath.value = '';
+                  hiddenSiteId.value = '';
+               }
+            }
+
+            function updateHiddenList(option) {
+               if (!hiddenListId || !hiddenListName) {
+                  return;
+               }
+               if (option && option.value) {
+                  hiddenListId.value = option.value;
+                  hiddenListName.value = option.getAttribute('data-display-name') || option.textContent;
+               } else {
+                  hiddenListId.value = '';
+                  hiddenListName.value = '';
+               }
+            }
+
+            function populateListSelector(siteId) {
+               while (listSelect.firstChild) {
+                  listSelect.removeChild(listSelect.firstChild);
+               }
+
+               var placeholder = listSelect.getAttribute('data-placeholder') || '';
+               var defaultOption = document.createElement('option');
+               defaultOption.value = '';
+               defaultOption.textContent = placeholder;
+               listSelect.appendChild(defaultOption);
+
+               if (!siteId || !listsBySite[siteId] || listsBySite[siteId].length === 0) {
+                  listSelect.disabled = true;
+                  updateHiddenList(null);
+                  return;
+               }
+
+               listSelect.disabled = false;
+               listsBySite[siteId].forEach(function (list) {
+                  var option = document.createElement('option');
+                  option.value = list.id;
+                  option.textContent = list.displayName || list.id;
+                  option.setAttribute('data-display-name', list.displayName || list.id);
+                  listSelect.appendChild(option);
+               });
+
+               var targetListId = initialListId && siteId === initialSiteId ? initialListId : '';
+               if (!targetListId && initialListName) {
+                  listsBySite[siteId].forEach(function (list) {
+                     if (!targetListId && list.displayName === initialListName) {
+                        targetListId = list.id;
+                     }
+                  });
+               }
+
+               if (targetListId) {
+                  listSelect.value = targetListId;
+                  var selectedOption = listSelect.options[listSelect.selectedIndex];
+                  updateHiddenList(selectedOption);
+               } else {
+                  updateHiddenList(null);
+               }
+            }
+
+            siteSelect.addEventListener('change', function () {
+               var selectedSiteId = siteSelect.value;
+               var selectedSite = null;
+               discoveredSites.forEach(function (site) {
+                  if (site.id === selectedSiteId) {
+                     selectedSite = site;
+                  }
+               });
+               updateHiddenSite(selectedSite);
+               initialSiteId = selectedSite ? selectedSite.id : '';
+               populateListSelector(selectedSiteId);
+            });
+
+            listSelect.addEventListener('change', function () {
+               var option = listSelect.options[listSelect.selectedIndex];
+               initialListId = option && option.value ? option.value : '';
+               updateHiddenList(option);
+            });
+
+            if (initialSiteId) {
+               siteSelect.value = initialSiteId;
+            }
+
+            if (siteSelect.value) {
+               var selected = null;
+               discoveredSites.forEach(function (site) {
+                  if (site.id === siteSelect.value) {
+                     selected = site;
+                  }
+               });
+               updateHiddenSite(selected);
+               populateListSelector(siteSelect.value);
+            } else {
+               populateListSelector('');
+            }
          });
       </script>
 

@@ -14,6 +14,10 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
         $clientId       = $config->ClientID();
         $clientSecret   = $config->ClientSecret();
 
+        if (empty($tenantId) || empty($clientId) || empty($clientSecret)) {
+            return null;
+        }
+
         $token_url = "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token";
         $token_data = array(
             'grant_type' => 'client_credentials',
@@ -30,19 +34,63 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
 
         $response = curl_exec($ch);
         if (curl_errno($ch)) {
+            $error = curl_error($ch);
             curl_close($ch);
-            return null;
+            throw new Exception("Erreur CURL lors de l'obtention du token : " . $error);
         }
 
         $http_status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
         if ($http_status != 200) {
-            curl_close($ch);
-            return null;
+            throw new Exception("Réponse inattendue ($http_status) lors de l'obtention du token : " . $response);
         }
 
-        curl_close($ch);
         $token_response = json_decode($response, true);
+        if (!isset($token_response['access_token'])) {
+            throw new Exception("Token d'accès introuvable dans la réponse : " . $response);
+        }
+
         return $token_response['access_token'];
+    }
+
+    protected function performGraphGet($url, $accessToken = null) {
+        if ($accessToken === null) {
+            $accessToken = $this->getAccessToken();
+        }
+
+        if (empty($accessToken)) {
+            throw new Exception("Impossible d'obtenir un token d'accès pour Microsoft Graph.");
+        }
+
+        $headers = array(
+            "Authorization: Bearer $accessToken",
+            "Content-Type: application/json"
+        );
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+        $response = curl_exec($ch);
+
+        if (curl_errno($ch)) {
+            $error = curl_error($ch);
+            curl_close($ch);
+            throw new Exception("Erreur CURL : " . $error);
+        }
+
+        $http_status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        $decoded = json_decode($response, true);
+
+        return array(
+            'status' => $http_status,
+            'decoded' => $decoded,
+            'raw' => $response
+        );
     }
 
     /**
@@ -53,8 +101,6 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
         if (!empty($siteIdOverride)) {
             return trim($siteIdOverride);
         }
-
-        $accessToken = $this->getAccessToken();
 
         // Nettoyer les paramètres
         $hostname = trim($hostname);
@@ -68,21 +114,10 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
         // Méthode 1 : Essayer avec hostname:sitePath (format standard)
         $url = "https://graph.microsoft.com/v1.0/sites/$hostname:$sitePath";
 
-        $headers = array(
-            "Authorization: Bearer $accessToken",
-            "Content-Type: application/json"
-        );
-
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        $responseObj = json_decode($response, true);
+        $accessToken = $this->getAccessToken();
+        $response = $this->performGraphGet($url, $accessToken);
+        $httpCode = $response['status'];
+        $responseObj = is_array($response['decoded']) ? $response['decoded'] : array();
 
         if (isset($responseObj['id'])) {
             return $responseObj['id'];
@@ -92,16 +127,8 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
         // Ex: globalinfo763.sharepoint.com + /sites/clients
         if ($httpCode === 404) {
             $url2 = "https://graph.microsoft.com/v1.0/sites/$hostname:$sitePath:/";
-
-            $ch2 = curl_init();
-            curl_setopt($ch2, CURLOPT_URL, $url2);
-            curl_setopt($ch2, CURLOPT_HTTPHEADER, $headers);
-            curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
-
-            $response2 = curl_exec($ch2);
-            curl_close($ch2);
-
-            $responseObj2 = json_decode($response2, true);
+            $response2 = $this->performGraphGet($url2, $accessToken);
+            $responseObj2 = is_array($response2['decoded']) ? $response2['decoded'] : array();
 
             if (isset($responseObj2['id'])) {
                 return $responseObj2['id'];
@@ -117,7 +144,7 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
         if (isset($responseObj['error'])) {
             $errorMsg .= "Erreur API : " . $responseObj['error']['message'];
         } else {
-            $errorMsg .= "Réponse : " . $response;
+            $errorMsg .= "Réponse : " . $response['raw'];
         }
 
         throw new Exception($errorMsg);
@@ -131,29 +158,14 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
             return trim($listIdOverride);
         }
 
-        $accessToken = $this->getAccessToken();
-
         $url = "https://graph.microsoft.com/v1.0/sites/$siteId/lists?$filter=displayName eq '$listDisplayName'";
-
-        $headers = array(
-            "Authorization: Bearer $accessToken",
-            "Content-Type: application/json"
-        );
-
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
-        $response = curl_exec($ch);
-        curl_close($ch);
-
-        $responseObj = json_decode($response, true);
+        $response = $this->performGraphGet($url);
+        $responseObj = is_array($response['decoded']) ? $response['decoded'] : array();
 
         if (isset($responseObj['value']) && count($responseObj['value']) > 0) {
             return $responseObj['value'][0]['id'];
         } else {
-            throw new Exception("Impossible de récupérer l'ID de la liste : " . $response);
+            throw new Exception("Impossible de récupérer l'ID de la liste : " . $response['raw']);
         }
     }
 
@@ -164,41 +176,19 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
      * @return array - Les colonnes de la liste
      */
     public function getListColumns($siteId, $listId) {
-        $accessToken = $this->getAccessToken();
-
         $url = "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$listId/columns";
+        $response = $this->performGraphGet($url);
 
-        $headers = array(
-            "Authorization: Bearer $accessToken",
-            "Content-Type: application/json"
-        );
-
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
-        $response = curl_exec($ch);
-
-        if (curl_errno($ch)) {
-            $error = curl_error($ch);
-            curl_close($ch);
-            throw new Exception("Erreur CURL : " . $error);
+        if ($response['status'] != 200) {
+            throw new Exception("Erreur HTTP " . $response['status'] . " : " . $response['raw']);
         }
 
-        $http_status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($http_status != 200) {
-            throw new Exception("Erreur HTTP $http_status : " . $response);
-        }
-
-        $responseObj = json_decode($response, true);
+        $responseObj = is_array($response['decoded']) ? $response['decoded'] : array();
 
         if (isset($responseObj['value'])) {
             return $responseObj['value'];
         } else {
-            throw new Exception("Impossible de récupérer les colonnes de la liste : " . $response);
+            throw new Exception("Impossible de récupérer les colonnes de la liste : " . $response['raw']);
         }
     }
 
@@ -211,8 +201,6 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
      * @return array - Les éléments de la liste
      */
     public function getListItems($siteId, $listId, $filter = null, $expand = array('fields')) {
-        $accessToken = $this->getAccessToken();
-
         // Construction de l'URL avec paramètres optionnels
         $url = "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$listId/items";
 
@@ -228,59 +216,158 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
             $url .= '?' . implode('&', $params);
         }
 
-        $headers = array(
-            "Authorization: Bearer $accessToken",
-            "Content-Type: application/json"
-        );
+        $response = $this->performGraphGet($url);
 
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
-        $response = curl_exec($ch);
-
-        if (curl_errno($ch)) {
-            $error = curl_error($ch);
-            curl_close($ch);
-            throw new Exception("Erreur CURL : " . $error);
+        if ($response['status'] != 200) {
+            throw new Exception("Erreur HTTP " . $response['status'] . " : " . $response['raw']);
         }
 
-        $http_status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($http_status != 200) {
-            throw new Exception("Erreur HTTP $http_status : " . $response);
-        }
-
-        $responseObj = json_decode($response, true);
+        $responseObj = is_array($response['decoded']) ? $response['decoded'] : array();
 
         if (isset($responseObj['value'])) {
             return $responseObj['value'];
         } else {
-            throw new Exception("Impossible de récupérer les éléments de la liste : " . $response);
+            throw new Exception("Impossible de récupérer les éléments de la liste : " . $response['raw']);
         }
+    }
+
+    public function discoverSites() {
+        $sites = array();
+        $accessToken = $this->getAccessToken();
+
+        $nextUrl = 'https://graph.microsoft.com/v1.0/sites?search=*';
+
+        while (!empty($nextUrl)) {
+            $response = $this->performGraphGet($nextUrl, $accessToken);
+
+            if ($response['status'] != 200) {
+                throw new Exception("Impossible de découvrir les sites SharePoint : " . $response['raw']);
+            }
+
+            $body = is_array($response['decoded']) ? $response['decoded'] : array();
+
+            if (isset($body['value']) && is_array($body['value'])) {
+                foreach ($body['value'] as $site) {
+                    if (!isset($site['id']) || !isset($site['webUrl'])) {
+                        continue;
+                    }
+
+                    $parsed = parse_url($site['webUrl']);
+                    if ($parsed === false || !isset($parsed['host'])) {
+                        continue;
+                    }
+
+                    $sitePath = isset($parsed['path']) ? $parsed['path'] : '';
+
+                    $sites[$site['id']] = array(
+                        'id' => $site['id'],
+                        'displayName' => isset($site['displayName']) ? $site['displayName'] : $site['id'],
+                        'webUrl' => $site['webUrl'],
+                        'hostname' => $parsed['host'],
+                        'sitePath' => $sitePath,
+                        'lists' => array()
+                    );
+                }
+            }
+
+            if (isset($body['@odata.nextLink'])) {
+                $nextUrl = $body['@odata.nextLink'];
+            } else {
+                $nextUrl = null;
+            }
+        }
+
+        if (empty($sites)) {
+            throw new Exception("Aucun site SharePoint accessible n'a été détecté.");
+        }
+
+        foreach ($sites as $siteId => $siteData) {
+            $sites[$siteId]['lists'] = $this->discoverSiteLists($siteId, $accessToken);
+        }
+
+        return array_values($sites);
+    }
+
+    public function discoverSiteLists($siteId, $accessToken = null) {
+        if (empty($siteId)) {
+            return array();
+        }
+
+        $url = "https://graph.microsoft.com/v1.0/sites/$siteId/lists?$select=id,displayName,list,webUrl";
+        $response = $this->performGraphGet($url, $accessToken);
+
+        if ($response['status'] != 200) {
+            throw new Exception("Impossible de découvrir les listes du site : " . $response['raw']);
+        }
+
+        $body = is_array($response['decoded']) ? $response['decoded'] : array();
+        $lists = array();
+
+        if (isset($body['value']) && is_array($body['value'])) {
+            foreach ($body['value'] as $list) {
+                if (!isset($list['id'])) {
+                    continue;
+                }
+
+                $isHidden = isset($list['list']['hidden']) && $list['list']['hidden'];
+                $isSystem = isset($list['list']['system']) && $list['list']['system'];
+                if ($isHidden) {
+                    continue;
+                }
+
+                $template = isset($list['list']['template']) ? $list['list']['template'] : '';
+                if ($template === 'documentLibrary') {
+                    continue;
+                }
+
+                if ($isSystem) {
+                    continue;
+                }
+
+                $lists[] = array(
+                    'id' => $list['id'],
+                    'displayName' => isset($list['displayName']) ? $list['displayName'] : $list['id'],
+                    'webUrl' => isset($list['webUrl']) ? $list['webUrl'] : ''
+                );
+            }
+        }
+
+        return $lists;
+    }
+
+    public function getSiteDetails($siteId) {
+        if (empty($siteId)) {
+            throw new Exception("Identifiant de site manquant.");
+        }
+
+        $url = "https://graph.microsoft.com/v1.0/sites/$siteId";
+        $response = $this->performGraphGet($url);
+
+        if ($response['status'] != 200) {
+            throw new Exception("Impossible de récupérer les informations du site : " . $response['raw']);
+        }
+
+        return $response['decoded'];
     }
 
     /**
      * Fonction pour valider la connexion SharePoint
      */
-    public function validateSharePointConnection($sitePath) {
+    public function validateSharePointConnection() {
         try {
             $config = new PluginSharepointinfosConfig();
 
             // Test 1: Obtenir le token
             $accessToken = $this->getAccessToken();
-            if (empty($accessToken)) {
-                return array(
-                    'status' => false,
-                    'message' => 'Impossible d\'obtenir un token d\'accès. Vérifiez vos identifiants.'
-                );
-            }
 
             // Test 2: Obtenir l'ID du site
+            $siteId = $config->SiteID();
             try {
-                $siteId = $this->getSiteId($config->Hostname(), $sitePath, $config->SiteID());
+                if (empty($siteId)) {
+                    $siteId = $this->getSiteId($config->Hostname(), $config->SitePath(), $config->SiteID());
+                } else {
+                    $this->getSiteDetails($siteId);
+                }
                 if (empty($siteId)) {
                     return array(
                         'status' => false,
@@ -351,10 +438,18 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
 
         // Test 2: Accès au site SharePoint
         try {
-            $siteId = $this->getSiteId($config->Hostname(), $config->SitePath(), $config->SiteID());
+            $siteId = $config->SiteID();
+            if (!empty($siteId)) {
+                $siteDetails = $this->getSiteDetails($siteId);
+            } else {
+                $siteDetails = array();
+                $siteId = $this->getSiteId($config->Hostname(), $config->SitePath(), $config->SiteID());
+            }
             $results['siteID'] = array(
                 'status' => !empty($siteId) ? 1 : 0,
-                'message' => !empty($siteId) ? 'Site ID obtenu : ' . substr($siteId, 0, 20) . '...' : 'Impossible d\'obtenir le site ID'
+                'message' => !empty($siteId)
+                    ? 'Site sélectionné : ' . (isset($siteDetails['displayName']) ? $siteDetails['displayName'] : substr($siteId, 0, 20) . '...')
+                    : 'Aucun site sélectionné'
             );
         } catch (Exception $e) {
             $results['siteID'] = array(
