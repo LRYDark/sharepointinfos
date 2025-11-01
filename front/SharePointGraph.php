@@ -102,52 +102,125 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
             return trim($siteIdOverride);
         }
 
-        // Nettoyer les paramètres
         $hostname = trim($hostname);
         $sitePath = trim($sitePath);
 
-        // S'assurer que sitePath commence par /
+        if (empty($hostname) && empty($sitePath)) {
+            return '';
+        }
+
         if (!empty($sitePath) && $sitePath[0] !== '/') {
             $sitePath = '/' . $sitePath;
         }
 
-        // Méthode 1 : Essayer avec hostname:sitePath (format standard)
-        $url = "https://graph.microsoft.com/v1.0/sites/$hostname:$sitePath";
-
         $accessToken = $this->getAccessToken();
-        $response = $this->performGraphGet($url, $accessToken);
-        $httpCode = $response['status'];
-        $responseObj = is_array($response['decoded']) ? $response['decoded'] : array();
+        $lastHttpCode = 0;
+        $lastResponse = array('decoded' => array(), 'raw' => '');
+        $requestedUrl = '';
 
-        if (isset($responseObj['id'])) {
-            return $responseObj['id'];
-        }
+        if (!empty($hostname)) {
+            $requestedUrl = "https://graph.microsoft.com/v1.0/sites/$hostname:$sitePath";
+            $response = $this->performGraphGet($requestedUrl, $accessToken);
+            $lastHttpCode = $response['status'];
+            $lastResponse = $response;
+            $responseObj = is_array($response['decoded']) ? $response['decoded'] : array();
 
-        // Méthode 2 : Si échec, essayer sans le hostname dans le path
-        // Ex: globalinfo763.sharepoint.com + /sites/clients
-        if ($httpCode === 404) {
-            $url2 = "https://graph.microsoft.com/v1.0/sites/$hostname:$sitePath:/";
-            $response2 = $this->performGraphGet($url2, $accessToken);
-            $responseObj2 = is_array($response2['decoded']) ? $response2['decoded'] : array();
+            if (isset($responseObj['id'])) {
+                return $responseObj['id'];
+            }
 
-            if (isset($responseObj2['id'])) {
-                return $responseObj2['id'];
+            if ($lastHttpCode === 404) {
+                $fallbackUrl = "https://graph.microsoft.com/v1.0/sites/$hostname:$sitePath:/";
+                $response2 = $this->performGraphGet($fallbackUrl, $accessToken);
+                $lastHttpCode = $response2['status'];
+                $lastResponse = $response2;
+                $responseObj2 = is_array($response2['decoded']) ? $response2['decoded'] : array();
+
+                if (isset($responseObj2['id'])) {
+                    return $responseObj2['id'];
+                }
+
+                if (!isset($responseObj['error']) && isset($responseObj2['error'])) {
+                    $responseObj = $responseObj2;
+                }
             }
         }
 
-        // Si toujours en échec, afficher une erreur détaillée
+        $discoveredSiteId = $this->discoverSiteIdByPath($sitePath, $accessToken);
+        if (!empty($discoveredSiteId)) {
+            return $discoveredSiteId;
+        }
+
         $errorMsg = "Impossible de récupérer l'ID du site.\n";
         $errorMsg .= "Hostname : $hostname\n";
         $errorMsg .= "SitePath : $sitePath\n";
-        $errorMsg .= "URL testée : $url\n";
+        if (!empty($requestedUrl)) {
+            $errorMsg .= "URL testée : $requestedUrl\n";
+        }
 
-        if (isset($responseObj['error'])) {
-            $errorMsg .= "Erreur API : " . $responseObj['error']['message'];
-        } else {
-            $errorMsg .= "Réponse : " . $response['raw'];
+        $lastDecoded = is_array($lastResponse['decoded']) ? $lastResponse['decoded'] : array();
+        if (isset($lastDecoded['error'])) {
+            $errorMsg .= "Erreur API : " . $lastDecoded['error']['message'];
+        } elseif (!empty($lastResponse['raw'])) {
+            $errorMsg .= "Réponse : " . $lastResponse['raw'];
         }
 
         throw new Exception($errorMsg);
+    }
+
+    protected function discoverSiteIdByPath($sitePath, $accessToken) {
+        $normalizedPath = '/' . ltrim($sitePath, '/');
+        $normalizedPath = rtrim($normalizedPath, '/');
+
+        if ($normalizedPath === '/') {
+            return '';
+        }
+
+        $segments = explode('/', trim($normalizedPath, '/'));
+        $searchTerm = end($segments);
+        if ($searchTerm === false || $searchTerm === '') {
+            return '';
+        }
+
+        $nextUrl = 'https://graph.microsoft.com/v1.0/sites?search=' . rawurlencode($searchTerm);
+
+        while (!empty($nextUrl)) {
+            $response = $this->performGraphGet($nextUrl, $accessToken);
+
+            if ($response['status'] != 200) {
+                return '';
+            }
+
+            $body = is_array($response['decoded']) ? $response['decoded'] : array();
+
+            if (isset($body['value']) && is_array($body['value'])) {
+                foreach ($body['value'] as $site) {
+                    if (!isset($site['id']) || !isset($site['webUrl'])) {
+                        continue;
+                    }
+
+                    $parsed = parse_url($site['webUrl']);
+                    if ($parsed === false || !isset($parsed['path'])) {
+                        continue;
+                    }
+
+                    $candidatePath = '/' . ltrim($parsed['path'], '/');
+                    $candidatePath = rtrim($candidatePath, '/');
+
+                    if (strcasecmp($candidatePath, $normalizedPath) === 0) {
+                        return $site['id'];
+                    }
+                }
+            }
+
+            if (isset($body['@odata.nextLink'])) {
+                $nextUrl = $body['@odata.nextLink'];
+            } else {
+                $nextUrl = '';
+            }
+        }
+
+        return '';
     }
 
     /**
