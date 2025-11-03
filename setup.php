@@ -1,5 +1,5 @@
 <?php
-define('PLUGIN_SHAREPOINTINFOS_VERSION', '1.0.0'); // version du plugin
+define('PLUGIN_SHAREPOINTINFOS_VERSION', '1.0.1'); // version du plugin
 $_SESSION['PLUGIN_SHAREPOINTINFOS_VERSION'] = PLUGIN_SHAREPOINTINFOS_VERSION;
 
 // Minimal GLPI version,

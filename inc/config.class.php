@@ -106,6 +106,14 @@ class PluginSharepointinfosConfig extends CommonDBTM
                <?php echo Html::input('ListDisplayName', ['value' => $config->ListDisplayName(), 'class' => 'form-control', 'id' => 'ListDisplayName', 'placeholder' => 'Liste techno']); ?>
                <small class="form-text text-muted">Le nom exact tel qu'affiché dans SharePoint (sensible à la casse)</small>
             </div>
+
+            <div class="col-md-6">
+               <label for="Link" class="form-label mb-1">
+                  <?php echo __('Lien de redirection vers la liste', 'sharepointinfos'); ?>
+               </label>
+               <?php echo Html::input('Link', ['value' => $config->Link(), 'class' => 'form-control', 'id' => 'Link', 'placeholder' => 'Liste techno']); ?>
+               <small class="form-text text-muted">https://globalinfo763.sharepoint.com/sites/clients/Lists/Liste%20techno/AllItems.aspx?view=7&q=XXX (XXX -> Entité du client automatique)</small>
+            </div>
             </div>
          </div>
       </div>
@@ -245,6 +253,7 @@ class PluginSharepointinfosConfig extends CommonDBTM
    function Hostname()        { return PluginSharepointinfosCrypto::decrypt($this->fields['Hostname']      ?? ''); }
    function SitePath()        { return PluginSharepointinfosCrypto::decrypt($this->fields['SitePath']      ?? ''); }
    function ListDisplayName() { return PluginSharepointinfosCrypto::decrypt($this->fields['ListDisplayName']      ?? ''); }
+   function Link() { return PluginSharepointinfosCrypto::decrypt($this->fields['Link']      ?? ''); }
 
    function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
    {
@@ -294,6 +303,7 @@ class PluginSharepointinfosConfig extends CommonDBTM
                   `Hostname` TEXT NULL,
                   `SitePath` TEXT NULL,
                   `ListDisplayName` TEXT NULL,
+                  `Link` TEXT NULL,
                   PRIMARY KEY (`id`)
          ) ENGINE=InnoDB DEFAULT CHARSET={$default_charset} COLLATE={$default_collation} ROW_FORMAT=DYNAMIC;";
          $DB->query($query) or die($DB->error());
