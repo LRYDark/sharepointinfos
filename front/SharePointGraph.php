@@ -1,1340 +1,358 @@
 <?php
-if (!defined('GLPI_ROOT')) {
-    die("Sorry. You can't access directly to this file");
-}
+/**
+ * Classe principale de connexion à SharePoint via Graph API
+ * 
+ * Elle charge automatiquement la configuration depuis PluginSharepointinfosConfig,
+ * résout le site et la liste SharePoint à partir de SITE_URL et LIST_DISPLAY_NAME,
+ * puis retourne les éléments filtrés (client ou code sage).
+ */
 
-require_once('../vendor/autoload.php'); // Utiliser le chargement automatique de Composer
-
-use Smalot\PdfParser\Parser;
+if (!defined('GRAPH_BASE'))  define('GRAPH_BASE', 'https://graph.microsoft.com/v1.0');
+if (!defined('GRAPH_SCOPE')) define('GRAPH_SCOPE', 'https://graph.microsoft.com/.default');
 
 class PluginSharepointinfosSharepoint extends CommonDBTM {
 
-    /**
-     * Fonction pour obtenir un token d'accès à partir d'Azure AD
-     */
-    public function getAccessToken() {
-        $config         = new PluginSharepointinfosConfig();
-        $tenantId       = $config->TenantID();
-        $clientId       = $config->ClientID();
-        $clientSecret   = $config->ClientSecret();
+    protected $tenantId;
+    protected $clientId;
+    protected $clientSecret;
+    protected $siteUrl;
+    protected $listDisplayName;
 
-        $token_url = "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token";
-        $token_data = [
-            'grant_type' => 'client_credentials',
-            'client_id' => $clientId,
-            'client_secret' => $clientSecret,
-            'scope' => 'https://graph.microsoft.com/.default'
-        ];
-    
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $token_url);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($token_data));
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    
-        $response = curl_exec($ch);
-        if (curl_errno($ch)) {
-            curl_close($ch);
-            return null;
-        }
-    
-        $http_status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        if ($http_status != 200) {
-            curl_close($ch);
-            return null;
-        }
-    
-        curl_close($ch);
-        $token_response = json_decode($response, true);
-        return $token_response['access_token'];
-    }
+    protected array $excludeDisplays = [
+        'Balise de couleur','ID de ressource de conformité','ID','Modifié','Créé','Créé par','Modifié par',
+        'Version','Pièces jointes','Modifier','Type',"Nombre d'éléments enfants","Nombre d’enfants du dossier",
+        "Paramètres de l’étiquette","Étiquette de rétention","Étiquette de rétention appliquée","Étiquette appliquée par",
+        "L’élément est un enregistrement",'Application créée par','Application modifiée par'
+    ];
+
+    protected array $excludeInternals = [
+        '_ColorTag','ComplianceAssetId','ID','Modified','Created','Author','Editor','_UIVersionString','Attachments',
+        'Edit','LinkTitle','LinkTitleNoMenu','DocIcon','ItemChildCount','FolderChildCount',
+        '_ComplianceFlags','_ComplianceTag','_ComplianceTagWrittenTime','_ComplianceTagUserId','_IsRecord',
+        'AppAuthor','AppEditor'
+    ];
 
     /**
-     * Fonction pour obtenir l'ID du site SharePoint
+     * Constructeur : récupère automatiquement la config depuis PluginSharepointinfosConfig
      */
-    public function getSiteId($hostname, $sitePath) {
-        $accessToken = $this->getAccessToken();
+    public function __construct() {
+        parent::__construct();
 
-        $url = "https://graph.microsoft.com/v1.0/sites/$hostname:$sitePath";
-
-        $headers = [
-            "Authorization: Bearer $accessToken",
-            "Content-Type: application/json"
-        ];
-
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
-        $response = curl_exec($ch);
-        curl_close($ch);
-
-        $responseObj = json_decode($response, true);
-
-        if (isset($responseObj['id'])) {
-            return $responseObj['id'];
-        } else {
-            throw new Exception("Impossible de récupérer l'ID du site : " . $response);
-        }
+        // Charge la config de ton plugin SharePointInfos
+        $config = new PluginSharepointinfosConfig();
+            // fallback si ta classe utilise des getters
+            $this->tenantId         = $config->TenantID();
+            $this->clientId         = $config->ClientID();
+            $this->clientSecret     = $config->ClientSecret();
+            $this->siteUrl          = 'https://'.$config->Hostname().$config->SitePath();
+            $this->listDisplayName  = $config->ListDisplayName();
     }
+
+    /* =======================================================
+       PUBLIC API
+       ======================================================= */
 
     /**
-     * Fonction pour obtenir les dossiers du site SharePoint
+     * Récupère les éléments SharePoint depuis la liste configurée
      */
-    public function getDrives($siteId) {
-        $accessToken = $this->getAccessToken();
-
-        $url = "https://graph.microsoft.com/v1.0/sites/$siteId/drives";
-
-        $headers = [
-            "Authorization: Bearer $accessToken",
-            "Content-Type: application/json"
-        ];
-
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
-        $response = curl_exec($ch);
-        curl_close($ch);
-
-        $responseObj = json_decode($response, true);
-
-        if (isset($responseObj['value'])) {
-            return $responseObj['value'];
-        } else {
-            throw new Exception("Impossible de récupérer les bibliothèques de documents : " . $response);
-        }
-    }
-
-    // Récupérer les dossiers pour params = 8 (dossiers de recherche)
-    public function getFoldersByParams1() {
-        global $DB;
-        $query = "SELECT folder_name FROM glpi_plugin_sharepointinfos_configsfolder WHERE params = 1";
-        $result = $DB->query($query);
-
-        $folders = [];
-        while ($row = $DB->fetchassoc($result)) {
-            $folders[] = $row['folder_name'];
+    public function getListItemsFromConfig(?string $value = null, string $by = 'both'): array {
+        $token = $this->getAccessToken();
+        if (!$token) {
+            return ['error' => 'AUTH_FAILED'];
         }
 
-        return $folders;
-    }
-
-    // Récupérer les éléments à rechercher pour params = 10 (ex: "Ticket", "Facture")
-    public function getSearchKeywordsByParams10() {
-        global $DB;
-        $query = "SELECT folder_name FROM glpi_plugin_sharepointinfos_configsfolder WHERE params = 10";
-        $result = $DB->query($query);
-
-        $keywords = [];
-        while ($row = $DB->fetchassoc($result)) {
-            $keywords[] = $row['folder_name'];
+        $siteId = $this->resolveSiteIdFromConfig($token);
+        if (is_array($siteId) && isset($siteId['error'])) {
+            return $siteId;
         }
 
-        return $keywords;
-    }
-
-    // Fonction pour effectuer la requête de recherche
-    /*public function searchSharePoint() {
-        $accessToken = $this->getAccessToken();
-        $config = new PluginSharepointinfosConfig();
-        $NumberViews = $config->NumberViews();
-        $Hostname = $config->Hostname();
-        $SitePath = $config->SitePath();
-        $bibliotheque = $config->Global();
-
-        $pdfFiles = [];
-    
-        // Récupérer les dossiers concernés en base de données (params = 1)
-        $folders = $this->getFoldersByParams1();
-        // Si aucun dossier n'est défini pour params = 1, on recherche dans "la bibliotheque"
-        if (empty($folders)) {
-            $folders = ["$bibliotheque"];
-        } else {
-            // Ajouter le préfixe "bibliotheque/" à chaque dossier récupéré
-            foreach ($folders as &$folder) {
-                $folder = "$bibliotheque/$folder";
-            }
+        $list = $this->resolveListByDisplayName($token, $siteId, $this->listDisplayName);
+        if (isset($list['error'])) {
+            return $list;
         }
-    
-        // Récupérer les éléments à rechercher (params = 10)
-        $keywords = $this->getSearchKeywordsByParams10();
-        if (empty($keywords)) {
-            return $pdfFiles;
-        }
-    
-        $search_url = 'https://graph.microsoft.com/v1.0/search/microsoft.graph.query';
-        $SiteUrl = "https://$Hostname"."$SitePath";
-        
-        foreach ($folders as $folderName) {
-            foreach ($keywords as $keyword) {
-                $queryString = "$keyword AND filetype:pdf path:\"$SiteUrl/$folderName\"";
-    
-                // Définition de la requête
-                $search_data = [
-                    "requests" => [
-                        [
-                            "entityTypes" => ["driveItem"],
-                            "query" => [
-                                "queryString" => $queryString
-                            ],
-                            "size" => $NumberViews,
-                            "sortProperties" => [
-                                [
-                                    "name" => "lastModifiedDateTime",
-                                    "isDescending" => true
-                                ]
-                            ],
-                            "region" => "FRA"
-                        ]
-                    ]
-                ];
-    
-                $search_data_json = json_encode($search_data);
-                if (json_last_error() !== JSON_ERROR_NONE) {
-                    throw new Exception("Erreur d'encodage JSON : " . json_last_error_msg());
-                }
-    
-                $nextLink = $search_url;
-    
-                do {
-                    $ch = curl_init();
-                    curl_setopt($ch, CURLOPT_URL, $nextLink);
-                    curl_setopt($ch, CURLOPT_POST, true);
-                    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                        'Authorization: Bearer ' . $accessToken,
-                        'Content-Type: application/json'
-                    ]);
-                    curl_setopt($ch, CURLOPT_POSTFIELDS, $search_data_json);
-                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    
-                    $response = curl_exec($ch);
-    
-                    if (curl_errno($ch)) {
-                        throw new Exception("Erreur cURL : " . curl_error($ch));
-                    }
-    
-                    $http_status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                    curl_close($ch);
-    
-                    if ($http_status != 200) {
-                        throw new Exception("Erreur API (HTTP $http_status) : $response");
-                    }
-    
-                    // Décodage de la réponse JSON
-                    $responseObj = json_decode($response, true);
-                    if (!isset($responseObj['value'][0]['hitsContainers'][0]['hits'])) {
-                        break;
-                    }
-    
-                    // Extraire les informations demandées
-                    foreach ($responseObj['value'][0]['hitsContainers'][0]['hits'] as $hit) {
-                        if (isset($hit['resource']['name'])) {
-                            $pdfFiles[] = [
-                                'name' => $hit['resource']['name'],
-                                'lastModifiedDateTime' => $hit['resource']['lastModifiedDateTime'] ?? 'Non disponible',
-                                'webUrl' => $hit['resource']['webUrl'] ?? 'Non disponible'
-                            ];
-                        }
-                    }
-    
-                    // Vérifier s'il y a une page suivante (pagination)
-                    $nextLink = $responseObj['@odata.nextLink'] ?? null;
-    
-                } while ($nextLink);
-            }
-        }
-    
-        return $pdfFiles;
-    }*/
+        $listId = $list['id'];
 
-    public function searchSharePoint() {
-        $accessToken = $this->getAccessToken();
-        $config = new PluginSharepointinfosConfig();
-        $driveId = $this->GetDriveId(); // Doit être implémenté
-        $NumberViews = $config->NumberViews(); // facultatif, si tu veux limiter
-        $keywords = $this->getSearchKeywordsByParams10(); // tableau de mots-clés
-        $folders = $this->getFoldersByParams1(); // tableau de noms de dossiers dans "Clients"
-
-        $results = [];
-
-        // Aucun mot-clé → rien à faire
-        if (empty($keywords)) {
-            return $results;
+        [$internalToDisplay, $allColumns] = $this->getVisibleColumns($token, $siteId, $listId);
+        if (isset($internalToDisplay['error'])) {
+            return $internalToDisplay;
         }
 
-        // Aucun dossier → recherche globale sur tous les mots-clés
-        if (empty($folders)) {
-            foreach ($keywords as $query) {
-                $url = "https://graph.microsoft.com/v1.0/drives/$driveId/root/search(q='" . urlencode($query) . "')";
-                $ch = curl_init($url);
-                curl_setopt_array($ch, [
-                    CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_HTTPHEADER => [
-                        "Authorization: Bearer $accessToken",
-                        "Content-Type: application/json",
-                        "ConsistencyLevel: eventual"
-                    ]
-                ]);
-                $response = curl_exec($ch);
-                curl_close($ch);
-                $data = json_decode($response, true);
+        $select = implode(',', array_keys($internalToDisplay));
+        $filter = $this->buildFilter($value, $by, $allColumns);
 
-                foreach ($data['value'] ?? [] as $item) {
-                    $filename = $item['name'] ?? '';
-                    if (
-                        strtolower(pathinfo($filename, PATHINFO_EXTENSION)) === 'pdf' &&
-                        stripos($filename, $query) !== false
-                    ) {
-                        $results[] = [
-                            'name'     => $filename,
-                            'lastModifiedDateTime' => $item['lastModifiedDateTime'] ?? 'Non disponible',
-                            'webUrl'   => $item['webUrl'] ?? 'Non disponible'
-                        ];
-                    }
-                }
-            }
-        } else {
-            // Pour chaque combinaison dossier + mot-clé
-            foreach ($folders as $folderName) {
-                $encodedPath = rawurlencode($folderName);
-                $urlGetId = "https://graph.microsoft.com/v1.0/drives/$driveId/root:/$encodedPath";
-
-                $ch = curl_init($urlGetId);
-                curl_setopt_array($ch, [
-                    CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_HTTPHEADER => [
-                        "Authorization: Bearer $accessToken",
-                        "Content-Type: application/json"
-                    ]
-                ]);
-                $response = curl_exec($ch);
-                curl_close($ch);
-                $data = json_decode($response, true);
-
-                if (!isset($data['id'])) continue;
-                $itemId = $data['id'];
-
-                foreach ($keywords as $query) {
-                    $url = "https://graph.microsoft.com/v1.0/drives/$driveId/items/$itemId/search(q='" . urlencode($query) . "')";
-                    $ch = curl_init($url);
-                    curl_setopt_array($ch, [
-                        CURLOPT_RETURNTRANSFER => true,
-                        CURLOPT_HTTPHEADER => [
-                            "Authorization: Bearer $accessToken",
-                            "Content-Type: application/json",
-                            "ConsistencyLevel: eventual"
-                        ]
-                    ]);
-                    $response = curl_exec($ch);
-                    curl_close($ch);
-                    $data = json_decode($response, true);
-
-                    foreach ($data['value'] ?? [] as $item) {
-                        $filename = $item['name'] ?? '';
-                        if (
-                            strtolower(pathinfo($filename, PATHINFO_EXTENSION)) === 'pdf' &&
-                            stripos($filename, $query) !== false
-                        ) {
-                            $results[] = [
-                                'name'     => $filename,
-                                'lastModifiedDateTime' => $item['lastModifiedDateTime'] ?? 'Non disponible',
-                                'webUrl'   => $item['webUrl'] ?? 'Non disponible'
-                            ];
-                        }
-                    }
-                }
-            }
+        $itemsUrl = GRAPH_BASE.'/sites/'.rawurlencode($siteId).'/lists/'.rawurlencode($listId)
+                  . '/items?$top=500&$expand='.rawurlencode("fields(\$select=$select)");
+        if ($filter) {
+            $itemsUrl .= '&$filter='.rawurlencode($filter);
         }
 
-        return $results;
-    }
-
-    public function searchSharePointGlobal(string $query): array {
-        global $DB;
-        $accessToken = $this->getAccessToken(); // doit exister dans ta classe
-        $config = new PluginSharepointinfosConfig();
-        $driveId = $this->GetDriveId(); // ID du Drive
-
-        $results = [];
-
-        // Construire l’URL de recherche globale
-        $url = "https://graph.microsoft.com/v1.0/drives/$driveId/root/search(q='" . urlencode($query) . "')";
-
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER => [
-                "Authorization: Bearer $accessToken",
-                "Content-Type: application/json",
-                "ConsistencyLevel: eventual"
-            ]
+        $res = $this->http_get_json($itemsUrl, [
+            'Authorization: Bearer '.$token,
+            'Prefer: HonorNonIndexedQueriesWarningMayFailRandomly'
         ]);
-
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($httpCode !== 200) {
-            return [['error' => "Erreur HTTP $httpCode"]];
+        $js = json_decode($res['body'], true);
+        if (!isset($js['value'])) {
+            return ['error' => 'NO_DATA', 'detail' => $js];
         }
 
-        $data = json_decode($response, true);
-                        
-        $folders = [];
-        // On récupère tous les folder_name avec params = 3 ou 2
-        $res = $DB->query("SELECT folder_name FROM `glpi_plugin_sharepointinfos_configsfolder` WHERE params IN (2,3)");
+        $rows = [];
+        foreach ($js['value'] as $it) {
+            $f = $it['fields'] ?? [];
+            $line = [];
+            foreach ($internalToDisplay as $internal => $display) {
+                $line[$display] = $f[$internal] ?? null;
+            }
+            $rows[] = $line;
+        }
+        return $rows;
+    }
 
-        foreach ($data['value'] ?? [] as $item) {
-            $filename = $item['name'] ?? '';
-            $webUrl = $item['webUrl'] ?? '';
+    /* =======================================================
+       INTERNE : API GRAPH
+       ======================================================= */
 
-                if (
-                    strtolower(pathinfo($filename, PATHINFO_EXTENSION)) === 'pdf' &&
-                    stripos($filename, $query) !== false
-                ) {
-                if ($res) {
-                    while ($row = $res->fetch_object()) {
-                        if (!empty($row->folder_name)) {
-                            $folders[] = $row->folder_name;
-                        }
-                    }
-                }
+    protected function getAccessToken(): ?string {
+        $tokenUrl = "https://login.microsoftonline.com/{$this->tenantId}/oauth2/v2.0/token";
+        $body = $this->http_post_form($tokenUrl, [
+            'client_id'     => $this->clientId,
+            'client_secret' => $this->clientSecret,
+            'grant_type'    => 'client_credentials',
+            'scope'         => GRAPH_SCOPE
+        ]);
+        $json = json_decode($body, true);
+        return $json['access_token'] ?? null;
+    }
 
-                // Si aucun résultat, on ajoute le nom par défaut
-                if (empty($folders)) {
-                    $folders[] = "DocumentsSigned";
-                }
+    protected function resolveSiteIdFromConfig(string $token) {
+        if (!preg_match('~^https?://([^/]+)(/.*)$~i', $this->siteUrl, $m)) {
+            return ['error' => 'SITE_URL_INVALID'];
+        }
+        $host = $m[1];
+        $path = $m[2];
+        $url  = GRAPH_BASE.'/sites/'.rawurlencode($host).':'.$path;
 
-                // Vérification dans $webUrl
-                $signed = false;
-                foreach ($folders as $folder) {
-                    if (stripos($webUrl, $folder) !== false) {
-                        $signed = true;
-                        break;
-                    }
-                }
+        $res  = $this->http_get_json($url, ['Authorization: Bearer '.$token]);
+        $js   = json_decode($res['body'], true);
+        if (!empty($js['id'])) return $js['id'];
+        return ['error'=>'SITE_NOT_FOUND', 'detail'=>$js];
+    }
 
-                $badge = $signed
-                    ? ' <span style="color:white;background-color:#28a745;padding:2px 6px;border-radius:4px;font-size:11px;">SIGNÉ</span>'
-                    : '';
+    protected function resolveListByDisplayName(string $token, string $siteId, string $listDisplayName) {
+        $url = GRAPH_BASE.'/sites/'.rawurlencode($siteId).'/lists?$filter='
+             . rawurlencode("displayName eq '$listDisplayName'");
+        $res = $this->http_get_json($url, ['Authorization: Bearer '.$token]);
+        $js  = json_decode($res['body'], true);
+        if (!empty($js['value'][0])) return $js['value'][0];
 
-                $results[] = [
-                    'id'       => $item['id'],
-                    'text'     => $filename,
-                    'filename' => $filename,
-                    'folder'   => $webUrl,
-                    'save'     => 'SharePoint',
-                    'signed'   => $signed ? 1 : 0,
-                    'html'     => $filename . $badge
-                ];
+        // fallback "contains"
+        $res = $this->http_get_json(
+            GRAPH_BASE.'/sites/'.rawurlencode($siteId).'/lists?$top=500&$select=id,displayName,webUrl',
+            ['Authorization: Bearer '.$token]
+        );
+        $js  = json_decode($res['body'], true);
+        foreach ($js['value'] ?? [] as $li) {
+            if (!empty($li['displayName']) && mb_stripos($li['displayName'], $listDisplayName) !== false) {
+                return $li;
             }
         }
-
-        return $results;
-    }
-      
-    /**
-     * Fonction de test de connexion au SharePoint
-     */
-    public function validateSharePointConnection($sitePath) {
-        $config         = new PluginSharepointinfosConfig();
-        $tenantId       = $config->TenantID();
-        $clientId       = $config->ClientID();
-        $clientSecret   = $config->ClientSecret();
-        $accessToken    = $this->getAccessToken();
-
-        if (!$accessToken) {
-            return [
-                'status' => false,
-                'message' => "Erreur : Token d'accès introuvable."
-            ];
-        }
-    
-        // Étape 2 : Tester l'accès au site SharePoint
-        $urlSite = "https://graph.microsoft.com/v1.0/sites/$sitePath";
-    
-        $headers = [
-            "Authorization: Bearer $accessToken",
-            "Content-Type: application/json"
-        ];
-    
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $urlSite);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    
-        $responseSite = curl_exec($ch);
-        $httpStatusSite = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-    
-        if ($httpStatusSite === 200) {
-            return [
-                'status' => true,
-                'message' => "Connexion validée : Accès API SharePoint réussi."
-            ];
-        } elseif ($httpStatusSite === 403) {
-            return [
-                'status' => false,
-                'message' => "Erreur : Accès refusé. Assurez-vous que l'application dispose des autorisations nécessaires."
-            ];
-        } elseif ($httpStatusSite === 401) {
-            return [
-                'status' => false,
-                'message' => "Erreur : Accès non autorisé. Vérifiez les permissions dans Azure AD."
-            ];
-        } else {
-            return [
-                'status' => false,
-                'message' => "Erreur : Impossible de récupérer l'ID du site (HTTP $httpStatusSite)."
-            ];
-        }
+        return ['error'=>'LIST_NOT_FOUND', 'detail'=>$js];
     }
 
-    /**
-     * Fonction pour obtenir l'URL de téléchargement d'un fichier
-     */
-    public function getDownloadUrl($filePath) {
-        $accessToken = $this->getAccessToken();
-        $driveId = $this->GetDriveId();
-
-        $url = "https://graph.microsoft.com/v1.0/drives/$driveId/root:/$filePath";
-
-        $headers = [
-            "Authorization: Bearer $accessToken",
-            "Content-Type: application/json"
-        ];
-
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
-        $response = curl_exec($ch);
-        $httpStatus = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        $responseObj = json_decode($response, true);
-
-        if ($httpStatus === 200 && isset($responseObj['@microsoft.graph.downloadUrl'])) {
-            return $responseObj['@microsoft.graph.downloadUrl'];
-        } else {
-            throw new Exception("Impossible d'obtenir l'URL de téléchargement : HTTP $httpStatus");
+    protected function getVisibleColumns(string $token, string $siteId, string $listId): array {
+        $colsUrl = GRAPH_BASE.'/sites/'.rawurlencode($siteId).'/lists/'.rawurlencode($listId).'/columns?$top=500';
+        $res     = $this->http_get_json($colsUrl, ['Authorization: Bearer '.$token]);
+        $js      = json_decode($res['body'], true);
+        $cols    = $js['value'] ?? null;
+        if (!is_array($cols)) {
+            return [ ['error'=>'COLUMNS_ERROR', 'detail'=>$js], [] ];
         }
-    }
-    
-    /**
-     * Fonction pour télécharger le fichier depuis l'URL de téléchargement
-     */
-    public function downloadFileFromUrl($downloadUrl, $destinationPath) {
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $downloadUrl);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 
-        $response = curl_exec($ch);
-        $httpStatus = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        $internalToDisplay = [];
+        foreach ($cols as $c) {
+            $hidden = $c['hidden'] ?? false;
+            $group  = $c['columnGroup'] ?? '';
+            if ($hidden || $group === '_Hidden') continue;
 
-        if ($httpStatus === 200) {
-            // Enregistrer le fichier téléchargé
-            file_put_contents($destinationPath, $response);
-            echo "Fichier téléchargé avec succès : $destinationPath\n";
-        } else {
-            throw new Exception("Erreur lors du téléchargement à partir de l'URL : HTTP $httpStatus");
+            $internal = $c['name'] ?? '';
+            $display  = $c['displayName'] ?? $internal;
+            if (!$internal) continue;
+
+            if (in_array($display,  $this->excludeDisplays,  true)) continue;
+            if (in_array($internal, $this->excludeInternals, true)) continue;
+
+            $internalToDisplay[$internal] = $display;
         }
+
+        if (empty($internalToDisplay)) {
+            return [ ['error'=>'NO_COLUMNS_AFTER_EXCLUDE'], $cols ];
+        }
+        return [ $internalToDisplay, $cols ];
     }
 
-    /**
-     * Fonction pour récupérer l'URL d'un fichier dans SharePoint
-     */
-    public function getFileUrl($filePath) {
-        $accessToken = $this->getAccessToken();
-        $driveId = $this->GetDriveId();
+    protected function buildFilter(?string $value, string $by, array $allColumns): ?string {
+        if ($value === null || $value === '') return null;
 
-        $url = "https://graph.microsoft.com/v1.0/drives/$driveId/root:/$filePath";
-
-        $headers = [
-            "Authorization: Bearer $accessToken",
-            "Content-Type: application/json"
-        ];
-
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
-        $response = curl_exec($ch);
-        $httpStatus = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        $responseObj = json_decode($response, true);
-
-        if ($httpStatus === 200) {
-            return $responseObj['webUrl'] ?? null;
-        } else {
-            throw new Exception("Erreur : Impossible de récupérer les métadonnées du fichier (HTTP $httpStatus).");
-        }
-    }
-
-    /**
-     * Fonction pour vérifier si un fichier existe dans SharePoint
-     */
-    public function checkFileExists($filePath) {
-        $accessToken = $this->getAccessToken();
-        $driveId = $this->GetDriveId();
-
-        $url = "https://graph.microsoft.com/v1.0/drives/$driveId/root:/$filePath";
-
-        $headers = [
-            "Authorization: Bearer $accessToken",
-            "Content-Type: application/json"
-        ];
-
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "GET"); // Requête GET pour récupérer les métadonnées
-
-        $response = curl_exec($ch);
-        $httpStatus = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($httpStatus === 200) {
-            return true; // Le fichier existe
-        } elseif ($httpStatus === 404) {
-            return false; // Le fichier n'existe pas
-        } else {
-            throw new Exception("Erreur lors de la vérification : HTTP $httpStatus");
-        }
-    }
-
-    /**
-     * Fonction pour obtenir l'URL de téléchargement direct du fichier dans SharePoint
-     */
-    public function getDownloadUrlByPath($filePath) {
-        $accessToken = $this->getAccessToken();
-        $driveId = $this->GetDriveId();
-
-        // Construire l'URL pour récupérer l'URL du fichier
-        $url = "https://graph.microsoft.com/v1.0/drives/$driveId/root:/$filePath";
-
-        $headers = [
-            "Authorization: Bearer $accessToken",
-            "Content-Type: application/json"
-        ];
-
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
-        $response = curl_exec($ch);
-        $httpStatus = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($httpStatus === 200) {
-            $fileData = json_decode($response, true);
-            return $fileData['@microsoft.graph.downloadUrl'] ?? null; // Retourne l'URL de téléchargement
-        } else {
-            return null;
-        }
-    }
-
-    /**
-     * Fonction pour téléverser un fichier dans un dossier SharePoint
-     */
-    public function uploadFileToFolder($folderPath, $fileName, $sourcePath) {
-        $accessToken = $this->getAccessToken();
-        $driveId = $this->GetDriveId();
-
-        // Construire l'URL du dossier cible
-        $url = "https://graph.microsoft.com/v1.0/drives/$driveId/root:/$folderPath/$fileName:/content";
-
-        $headers = [
-            "Authorization: Bearer $accessToken",
-            "Content-Type: application/octet-stream"
-        ];
-
-        // Lire le contenu du fichier local à téléverser
-        $fileContent = file_get_contents($sourcePath);
-
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PUT");
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $fileContent);
-
-        $response = curl_exec($ch);
-        $httpStatus = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($httpStatus === 200 || $httpStatus === 201) {
-            
-        } else {
-            throw new Exception("Erreur lors du téléversement du fichier : HTTP $httpStatus");
-        }
-    }
-
-    /**
-     * Fonction pour supprimer un fichier en utilisant son chemin complet (sans passer par l'ID)
-     */
-    public function deleteFileByPath($filePath) {
-        $accessToken = $this->getAccessToken();
-        $driveId = $this->GetDriveId();
-
-        // Construire l'URL pour supprimer le fichier directement via son chemin
-        $url = "https://graph.microsoft.com/v1.0/drives/$driveId/root:/$filePath";
-
-        $headers = [
-            "Authorization: Bearer $accessToken",
-            "Content-Type: application/json"
-        ];
-
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "DELETE");
-
-        $response = curl_exec($ch);
-        $httpStatus = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($httpStatus === 204) {
-            echo "Fichier supprimé avec succès.\n";
-        } elseif ($httpStatus === 404) {
-            echo "Erreur : Fichier introuvable à ce chemin : $filePath\n";
-        } else {
-            throw new Exception("Erreur : Impossible de supprimer le fichier (HTTP $httpStatus).");
-        }
-    }
-
-    /**
-     * Fonction pour récupéré l'id du répértoire cible du site
-     */
-    public function GetDriveId() {
-        $config = new PluginSharepointinfosConfig();
-        $bibliotheque = $config->Global();
-
-        if($bibliotheque == 'Documents partages'){
-            $globaldrive = strtolower(trim('Documents'));
-        }else{
-            $globaldrive = strtolower(trim($bibliotheque));
-        }
-
-        $siteId = '';
-        $siteId = $this->getSiteId($config->Hostname(), $config->SitePath());
-        $drives = $this->getDrives($siteId);
-
-        // Trouver la bibliothèque "Documents partagés"
-        $driveId = null;
-        foreach ($drives as $drive) {
-            if (strtolower($drive['name']) === $globaldrive) {
-                $driveId = $drive['id'];
+        $codeSageInternal = 'field_1';
+        foreach ($allColumns as $c) {
+            if (isset($c['displayName']) && mb_strtolower($c['displayName']) === 'code sage') {
+                $codeSageInternal = $c['name'] ?? 'field_1';
                 break;
             }
         }
 
-        if (!$driveId) {
-            throw new Exception("Erreur : Bibliothèque '$globaldrive' introuvable.");
-        }else{
-            return $driveId;
-        }
+        $safe = str_replace("'", "''", $value);
+        $clauses = [];
+        if ($by === 'client' || $by === 'both')    $clauses[] = "fields/Title eq '$safe'";
+        if ($by === 'code_sage' || $by === 'both') $clauses[] = "fields/$codeSageInternal eq '$safe'";
+        if (empty($clauses))                        $clauses[] = "fields/Title eq '$safe'";
+
+        return implode(' or ', $clauses);
     }
 
-    /**
-     * Fonction pour effectuer la requête de recherche pour la tâche cron
-     */
-     public function searchSharePointCron($startDate = null, $endDate = null) {
-        $accessToken = $this->getAccessToken();
-        $config = new PluginSharepointinfosConfig();
-        $Hostname = $config->Hostname();
-        $SitePath = $config->SitePath();
-        $bibliotheque = $config->Global();
+    /* =======================================================
+       HTTP Helper
+       ======================================================= */
 
-        $pdfFiles = [];
-        
-        // Récupérer les éléments à rechercher (params = 10)
-        $keywords = $this->getSearchKeywordsByParams10();
-        if (empty($keywords)) {
-            return $pdfFiles;
-        }
-    
-        $search_url = 'https://graph.microsoft.com/v1.0/search/microsoft.graph.query';
-        $SiteUrl = "https://$Hostname"."$SitePath";
-        
-        foreach ($keywords as $keyword) {
-            if ($startDate) {
-                $queryString = "$keyword AND filetype:pdf path:\"$SiteUrl/$bibliotheque\" AND created>=$startDate AND created<=$endDate";
-            } else {
-                // Si $startDate est NULL, on ne met que la condition sur endDate
-                $queryString = "$keyword AND filetype:pdf path:\"$SiteUrl/$bibliotheque\" AND created<=$endDate";
-            }
+    protected function http_post_form(string $url, array $data): string {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => http_build_query($data),
+        ]);
+        $body = curl_exec($ch);
+        curl_close($ch);
+        return $body;
+    }
 
-            // Définition de la requête
-            $search_data = [
-                "requests" => [
-                    [
-                        "entityTypes" => ["driveItem"],
-                        "query" => [
-                            "queryString" => $queryString
-                        ],
-                        "size" => 500,
-                        "sortProperties" => [
-                            [
-                                "name" => "lastModifiedDateTime",
-                                "isDescending" => true
-                            ]
-                        ],
-                        "region" => "FRA"
-                    ]
-                ]
+    protected function http_get_json(string $url, array $headers = []): array {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER     => $headers,
+        ]);
+        $body = curl_exec($ch);
+        $info = curl_getinfo($ch);
+        curl_close($ch);
+        return ['body' => $body, 'info' => $info];
+    }
+
+    public function checkSharePointAccess(): array {
+        $out = [
+            'accessToken' => ['status' => 0, 'message' => 'Non vérifié'],
+            'siteID'      => ['status' => 0, 'message' => 'Non vérifié'],
+            'listAccess'  => ['status' => 0, 'message' => 'Non vérifié'],
+            'graphQuery'  => ['status' => 0, 'message' => 'Non vérifié'],
+        ];
+
+        // 1) Token
+        $token = $this->getAccessToken();
+        if (!$token) {
+            $out['accessToken'] = [
+                'status'  => 0,
+                'message' => "Échec de l'obtention du token (vérifie TenantID/ClientID/Secret et droits app Graph)."
             ];
+            // On continue quand même pour remonter un max d’infos
+        } else {
+            $shown = substr($token, 0, 6).'…';
+            $out['accessToken'] = [
+                'status'  => 1,
+                'message' => "OK (préfixe: {$shown})"
+            ];
+        }
 
-            $search_data_json = json_encode($search_data);
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                throw new Exception("Erreur d'encodage JSON : " . json_last_error_msg());
+        // 2) Site ID
+        $siteId = null;
+        if ($token) {
+            $siteId = $this->resolveSiteIdFromConfig($token);
+            if (is_array($siteId) && isset($siteId['error'])) {
+                $out['siteID'] = [
+                    'status'  => 0,
+                    'message' => "Échec résolution site: ".($siteId['error'] ?? 'inconnu')
+                ];
+            } else {
+                $out['siteID'] = [
+                    'status'  => 1,
+                    'message' => "OK (siteId: {$siteId})"
+                ];
             }
+        } else {
+            $out['siteID'] = [
+                'status'  => 0,
+                'message' => "Non testé (pas de token)."
+            ];
+        }
 
-            $nextLink = $search_url;
-
-            do {
-                $ch = curl_init();
-                curl_setopt($ch, CURLOPT_URL, $nextLink);
-                curl_setopt($ch, CURLOPT_POST, true);
-                curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                    'Authorization: Bearer ' . $accessToken,
-                    'Content-Type: application/json'
-                ]);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, $search_data_json);
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
-                $response = curl_exec($ch);
-
-                if (curl_errno($ch)) {
-                    throw new Exception("Erreur cURL : " . curl_error($ch));
-                }
-
-                $http_status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                curl_close($ch);
-
-                if ($http_status != 200) {
-                    throw new Exception("Erreur API (HTTP $http_status) : $response");
-                }
-
-                // Décodage de la réponse JSON
-                $responseObj = json_decode($response, true);
-                if (!isset($responseObj['value'][0]['hitsContainers'][0]['hits'])) {
-                    break;
-                }
-
-                // Extraire les informations demandées
-                foreach ($responseObj['value'][0]['hitsContainers'][0]['hits'] as $hit) {
-                    if (isset($hit['resource']['name'])) {
-                        $pdfFiles[] = [
-                            'name' => $hit['resource']['name'],
-                            'lastModifiedDateTime' => $hit['resource']['lastModifiedDateTime'] ?? 'Non disponible',
-                            'createdDateTime' => $hit['resource']['createdDateTime'] ?? 'Non disponible',
-                            'webUrl' => $hit['resource']['webUrl'] ?? 'Non disponible'
+        // 3) Accès à la liste
+        $list = null;
+        $listId = null;
+        if ($token && is_string($siteId) && $siteId !== '') {
+            $list = $this->resolveListByDisplayName($token, $siteId, $this->listDisplayName);
+            if (isset($list['error'])) {
+                $out['listAccess'] = [
+                    'status'  => 0,
+                    'message' => "Échec accès liste '{$this->listDisplayName}' (".$list['error'].")"
+                ];
+            } else {
+                $listId = $list['id'] ?? null;
+                if (!$listId) {
+                    $out['listAccess'] = [
+                        'status'  => 0,
+                        'message' => "Liste trouvée mais id manquant."
+                    ];
+                } else {
+                    // On vérifie l’endpoint lists/{id}
+                    $url  = GRAPH_BASE.'/sites/'.rawurlencode($siteId).'/lists/'.rawurlencode($listId).'?$select=id,displayName';
+                    $resp = $this->http_get_json($url, ['Authorization: Bearer '.$token]);
+                    $http = (int)($resp['info']['http_code'] ?? 0);
+                    if ($http === 200) {
+                        $out['listAccess'] = [
+                            'status'  => 1,
+                            'message' => "OK (listId: {$listId})"
+                        ];
+                    } else {
+                        $out['listAccess'] = [
+                            'status'  => 0,
+                            'message' => "HTTP {$http} sur /lists/{$listId}"
                         ];
                     }
                 }
-
-                // Vérifier s'il y a une page suivante (pagination)
-                $nextLink = $responseObj['@odata.nextLink'] ?? null;
-
-            } while ($nextLink);
-        }
-    
-        return $pdfFiles;
-    } 
-
-    /**
-     * Récupérer tous les folder_name depuis la base de données
-     */
-    public function getFolderNamesFromDatabase($param) {
-        global $DB;
-
-        // Exemple de requête pour récupérer tous les folder_name de la base de données
-        $query = "SELECT folder_name FROM glpi_plugin_sharepointinfos_configsfolder WHERE params = $param";
-        $result = $DB->query($query);
-
-        $folderNames = [];
-        if ($result) {
-            while ($row = $result->fetch_assoc()) {
-                $folderNames[] = $row['folder_name'];
             }
-        }
-
-        return $folderNames;
-    }
-
-    /**
-     * Vérifier si le sous-dossier contient l'une des valeurs de folderNames
-     */
-    public function containsAnyFolderName($subfolderName, $folderNames) {
-        foreach ($folderNames as $folderName) {
-            if (strpos($subfolderName, $folderName) !== false) {
-                return true;  // Si le sous-dossier contient l'une des valeurs, on retourne true
-            }
-        }
-        return false;  // Aucun folder_name trouvé dans le nom du sous-dossier
-    }
-
-    /**
-     * Convertir une date ISO 8601 (avec T et Z) en format standard
-     */
-    public function convertFromISO8601($isoDate) {
-        // Vérifier si le format correspond à une date ISO 8601 avec T et Z
-        if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/', $isoDate)) {
-            // Remplacer le 'T' par un espace et supprimer le 'Z'
-            return str_replace(['T', 'Z'], [' ', ''], $isoDate);
-        }
-
-        // Retourner l'entrée si ce n'est pas une date ISO 8601 valide
-        return $isoDate;
-    }
-
-    /**
-     * Récupération du tracker sur le PDF
-     */
-    public function GetTrackerPdfDownload($filePath) {
-
-        $log = GLPI_PLUGIN_DOC_DIR . "/sharepointinfos/log.txt";
-        $autoloadPath = __DIR__ . '/../vendor/autoload.php';
-
-        // Générer un nombre entier aléatoire entre 1 et 100
-        $nombreAleatoire = rand(1, 100000);
-        $tracker = '';
-        $config         = new PluginSharepointinfosConfig();
-        $extracteur     = $config->extract();
-
-        if (!empty($extracteur) && $config->ExtractYesNo() == 1) {
-            try {  
-                // Étape 4 : Obtenir l'URL de téléchargement
-                $downloadUrl = $this->getDownloadUrl($filePath);
-            } catch (Exception $e) {
-                throw new Exception("Erreur : " . $e->getMessage());
-            }
-        
-            try {
-                // Étape 5 : Télécharger le fichier depuis l'URL
-                $destinationPath = GLPI_PLUGIN_DOC_DIR . "/sharepointinfos/FilesTempSharePoint/SharePoint_Temp_".$nombreAleatoire.".pdf";
-                $this->downloadFileFromUrl($downloadUrl, $destinationPath);
-            } catch (Exception $e) {
-                throw new Exception("Erreur : " . $e->getMessage());
-            }
-            
-            try {
-                if (file_exists($autoloadPath)) {
-                    require_once($autoloadPath);
-                } else {
-                    file_put_contents($log, "autoload introuvable : $autoloadPath\n", FILE_APPEND);
-                    $tracker = NULL;
-                }
-                
-                if (class_exists('Smalot\PdfParser\Parser')) {
-                    try {
-                        $parser = new Parser();
-                    } catch (Exception $e) {
-                        file_put_contents($log, "Erreur lors de l'initialisation du Parser : " . $e->getMessage() . "\n", FILE_APPEND);
-                    }
-
-                    try {
-                        $pdf = $parser->parseFile($destinationPath);
-                        // Extraire le texte brut
-                        $text = $pdf->getText();
-                
-                        if (empty($text)) {
-                            file_put_contents($log, "Impossible d'extraire le texte. Le PDF pourrait contenir uniquement des images.", FILE_APPEND);
-                        }
-                    } catch (Exception $e) {
-                        file_put_contents($log, "Erreur lors de l'extraction du text brut : " . $e->getMessage() . "\n", FILE_APPEND);
-                    }
-
-                    try {
-                        // Nettoyer le texte extrait
-                        $cleanText = trim($text);
-                        
-                        // Rechercher le texte dynamique entre "Instruction de livraison" et "Tracker"
-                        if (preg_match("$extracteur", $cleanText, $matches)) {
-                            $tracker = trim($matches[1]);
-                        }
-                    } catch (Exception $e) {
-                        file_put_contents($log, "Erreur lors de l'extraction du tracker depuis le text brut : " . $e->getMessage() . "\n", FILE_APPEND);
-                    }
-
-                } else {
-                    file_put_contents($log, "Classe Parser NON disponible\n", FILE_APPEND);
-                    $tracker = NULL;
-                }
-            
-            } catch (Exception $e) {
-                file_put_contents($log, "Erreur général de récupération du tracker  : " . $e->getMessage() . "\n", FILE_APPEND);
-                $tracker = NULL;
-            }
-
-            unlink($destinationPath);
-        }
-        return $tracker;
-    }
-
-    public function MailSend($EMAIL, $gabarit_id, $outputPath = NULL, $message = NULL, $id_survey = NULL, $tracker = NULL, $url = NULL, $fileName = NULL, $SubjectMail = NULL, $BodyMail = NULL) {
-        global $DB, $CFG_GLPI;
-
-        // --- Parsing + validation des emails (multi) ---
-        if (!function_exists('parse_emails')) {
-            function parse_emails($emails): array {
-                // $emails peut être une chaîne "a@x, b@y; c@z" ou un array
-                $items = is_array($emails)
-                    ? $emails
-                    : preg_split('/[,\s;]+/u', (string)$emails, -1, PREG_SPLIT_NO_EMPTY);
-
-                $valid = [];
-                foreach ($items as $e) {
-                    $e = trim((string)$e);
-                    if ($e !== '' && filter_var($e, FILTER_VALIDATE_EMAIL)) {
-                        $valid[strtolower($e)] = $e; // dédoublonnage case-insensitive
-                    }
-                }
-                return array_values($valid);
-            }
-        }
-
-        $emails = parse_emails($EMAIL); // <- la colonne BDD telle quelle (peut contenir plusieurs adresses)
-        if (!$emails) {
-            throw new InvalidArgumentException("Aucune adresse email valide trouvée.");
-        }
-
-        // Premier mail en To, les autres en Cc
-        $to = array_shift($emails);
-        $cc = $emails; // peut être vide
-
-        // --- BALISES ---
-        $Balises = [
-            ['Balise' => '##sharepointinfos.id##'     , 'Value' => (string)$id_survey],
-            ['Balise' => '##sharepointinfos.tracker##', 'Value' => (string)$tracker],
-            ['Balise' => '##sharepointinfos.url##'    , 'Value' => ($url && $fileName) ? "<a href='$url'>$fileName</a>" : ""],
-        ];
-
-        // Fonction pour remplacer les balises
-        $remplacerBalises = function($corps) use ($Balises) {
-            if ($corps === null) return '';
-            foreach ($Balises as $b) {
-                $tag = isset($b['Balise']) ? (string)$b['Balise'] : '';
-                if ($tag === '') continue;
-                $val = array_key_exists('Value', $b) ? (string)$b['Value'] : '';
-                $corps = str_replace($tag, $val, (string)$corps);
-            }
-            return $corps;
-        };
-
-        // --- Préparation mailer ---
-        $mmail  = new GLPIMailer(); // génération du mail
-        $config = new PluginSharepointinfosConfig();
-
-        // --- Lecture gabarit (v1 simple, comme ton ancienne version) ---
-        $Subject = '';
-        $BodyText = '';
-        $BodyHtml = '';
-
-        if ((int)$gabarit_id > 0) {
-            $itTpl = $DB->request([
-                'SELECT' => ['subject', 'content_text', 'content_html', 'language'],
-                'FROM'   => 'glpi_notificationtemplatetranslations',
-                'WHERE'  => ['notificationtemplates_id' => (int)$gabarit_id],
-                'LIMIT'  => 1
-            ])->current();
-
-            if (!is_array($itTpl)) {
-                // dernier recours sans filtre de langue
-                $itTpl = $DB->request([
-                    'SELECT' => ['subject', 'content_text', 'content_html', 'language'],
-                    'FROM'   => 'glpi_notificationtemplatetranslations',
-                    'WHERE'  => ['notificationtemplates_id' => (int)$gabarit_id],
-                    'LIMIT'  => 1
-                ])->current();
-            }
-
-            if (is_array($itTpl)) {
-                $Subject  = (string)($itTpl['subject'] ?? '');
-                $BodyText = isset($itTpl['content_text']) ? html_entity_decode((string)$itTpl['content_text'], ENT_QUOTES, 'UTF-8') : '';
-                $BodyHtml = isset($itTpl['content_html']) ? html_entity_decode((string)$itTpl['content_html'], ENT_QUOTES, 'UTF-8') : '';
-            }
-        } elseif ($SubjectMail !== NULL && $BodyMail !== NULL) {
-            $Subject  = (string)$SubjectMail;
-            $BodyText = (string)$BodyMail;
-            $BodyHtml = (string)$BodyMail;
-        }
-
-        // --- Footer signature ---
-        $footerRow = $DB->query("SELECT value FROM glpi_configs WHERE name = 'mailing_signature'")->fetch_object();
-        $footer    = (!empty($footerRow->value)) ? html_entity_decode($footerRow->value, ENT_QUOTES, 'UTF-8') : '';
-
-        // --- Headers anti-réponses automatiques (Exchange etc.) ---
-        $mmail->AddCustomHeader("X-Auto-Response-Suppress: OOF, DR, NDR, RN, NRN");
-
-        // --- From sécurisé ---
-        if (empty($CFG_GLPI["from_email"])) {
-            // Mail expéditeur non renseigné : fallback admin
-            $mmail->SetFrom($CFG_GLPI["admin_email"], $CFG_GLPI["admin_email_name"], false);
         } else {
-            // Mail expéditeur renseigné
-            $mmail->SetFrom($CFG_GLPI["from_email"], $CFG_GLPI["from_email_name"], false);
+            $out['listAccess'] = [
+                'status'  => 0,
+                'message' => "Non testé (siteId/token manquant)."
+            ];
         }
 
-        // --- Destinataires (To + Cc)
-        $mmail->AddAddress($to);
-        if (!empty($cc)) {
-            foreach ($cc as $addr) {
-                $mmail->AddCC($addr);
+        // 4) Requête simple items?$top=1
+        if ($token && is_string($siteId) && $siteId !== '' && $listId) {
+            $url  = GRAPH_BASE.'/sites/'.rawurlencode($siteId).'/lists/'.rawurlencode($listId).'/items?$top=1&$expand='.rawurlencode('fields($select=Title)');
+            $resp = $this->http_get_json($url, [
+                'Authorization: Bearer '.$token,
+                'Prefer: HonorNonIndexedQueriesWarningMayFailRandomly'
+            ]);
+            $http = (int)($resp['info']['http_code'] ?? 0);
+            if ($http === 200) {
+                $js = json_decode($resp['body'], true);
+                $count = is_array($js['value'] ?? null) ? count($js['value']) : 0;
+                $out['graphQuery'] = [
+                    'status'  => 1,
+                    'message' => "OK (items retournés: {$count})"
+                ];
+            } else {
+                $out['graphQuery'] = [
+                    'status'  => 0,
+                    'message' => "HTTP {$http} sur /items?\$top=1"
+                ];
             }
-        }
-
-        // --- Pièce jointe optionnelle ---
-        if ($outputPath !== NULL && is_string($outputPath) && file_exists($outputPath)) {
-            $mmail->addAttachment($outputPath);
-        }
-
-        // --- Sujet / Corps (HTML + Texte) avec remplacement de balises ---
-        $mmail->isHTML(true);
-        if ($Subject !== '') {
-            $mmail->Subject = $remplacerBalises($Subject);
-        }
-        $mmail->Body    = GLPIMailer::normalizeBreaks($remplacerBalises($BodyHtml)) . $footer;
-        $mmail->AltBody = GLPIMailer::normalizeBreaks($remplacerBalises($BodyText)) . $footer;
-
-        // --- Envoi + messages ---
-        if (!$mmail->send()) {
-            Session::addMessageAfterRedirect(__("Erreur lors de l'envoi du mail : " . $mmail->ErrorInfo, 'sharepointinfos'), true, ERROR);
         } else {
-            if ((int)$gabarit_id === (int)($config->fields['gabarit'] ?? 0) && $message !== NULL) {
-                Session::addMessageAfterRedirect(__($message, 'sharepointinfos'), true, INFO);
-            }
+            $out['graphQuery'] = [
+                'status'  => 0,
+                'message' => "Non testé (liste/site/token manquant)."
+            ];
         }
 
-        // --- Nettoyage adresses ---
-        $mmail->ClearAddresses();
-    }
-
-    /* ##########################################################################  CHECK */
-    /**
-     * Fonction globale pour tester l'accès à l'API Microsoft Graph et SharePoint
-     */
-    public function checkSharePointAccess() {
-        $config = new PluginSharepointinfosConfig();
-        $tenantId = $config->TenantID();
-        $clientId = $config->ClientID();
-        $clientSecret = $config->ClientSecret();
-        $hostname = $config->Hostname();
-        $sitePath = $config->SitePath();
-
-        $results = [
-            'accessToken' => ['status' => false, 'message' => ''],
-            'sharePointAccess' => ['status' => false, 'message' => ''],
-            'siteID' => ['status' => false, 'message' => ''],
-            'graphQuery' => ['status' => false, 'message' => '']
-        ];
-
-        // 1. Obtenir le token d'accès en utilisant `getAccessToken()`
-        try {
-            $accessToken = $this->getAccessToken(); 
-
-            if ($accessToken) {
-                $results['accessToken']['status'] = true;
-                $results['accessToken']['message'] = "Token obtenu avec succès";
-            } else {
-                throw new Exception("Impossible d'obtenir un token d'accès");
-            }
-        } catch (Exception $e) {
-            $results['accessToken']['message'] = $e->getMessage();
-            return $results;
-        }
-
-        // Définition des headers pour les requêtes suivantes
-        $headers = [
-            "Authorization: Bearer $accessToken",
-            "Content-Type: application/json"
-        ];
-
-        // 2. Vérifier l'accès à SharePoint
-        try {
-            $checkSharePointUrl = "https://graph.microsoft.com/v1.0/sites/root";
-            $response = $this->apiRequest($checkSharePointUrl, $headers);
-
-            if (isset($response['id'])) {
-                $results['sharePointAccess']['status'] = true;
-                $results['sharePointAccess']['message'] = "Accès à SharePoint autorisé";
-            } else {
-                throw new Exception("Accès refusé à SharePoint");
-            }
-        } catch (Exception $e) {
-            $results['sharePointAccess']['message'] = $e->getMessage();
-            return $results;
-        }
-
-        // 3. Obtenir le Site ID en utilisant `getSiteId()`
-        try {
-            $siteId = $this->getSiteId($hostname, $sitePath);
-
-            if ($siteId) {
-                $results['siteID']['status'] = true;
-                $results['siteID']['message'] = $siteId;
-            } else {
-                throw new Exception("Impossible de récupérer l'ID du site");
-            }
-        } catch (Exception $e) {
-            $results['siteID']['message'] = $e->getMessage();
-            return $results;
-        }
-
-        // 4. Tester si Microsoft Graph Query est accessible
-        try {
-            $graphQueryResult = $this->testGraphQueryAccess();
-
-            if ($graphQueryResult['status']) {
-                $results['graphQuery']['status'] = true;
-                $results['graphQuery']['message'] = $graphQueryResult['message']; // Message par défaut
-            } else {
-                throw new Exception($graphQueryResult['message']);
-            }
-        } catch (Exception $e) {
-            $results['graphQuery']['message'] = $e->getMessage();
-            if (isset($graphQueryResult['response']['error']['message'])) {
-                $results['graphQuery']['message'] .= ' -> ' . $graphQueryResult['response']['error']['message'];
-            }
-        }
-
-        // 5. Vérifier les permissions sur le Drive ("Documents partagés")
-        try {
-            $driveId = $this->GetDriveId();
-            $permissionsUrl = "https://graph.microsoft.com/v1.0/drives/$driveId/root/permissions";
-            $permissionsResponse = $this->apiRequest($permissionsUrl, $headers);
-
-            if (isset($permissionsResponse['value']) && count($permissionsResponse['value']) > 0) {
-                $roles = [];
-
-                foreach ($permissionsResponse['value'] as $perm) {
-                    if (isset($perm['roles']) && isset($perm['grantedToV2']['siteGroup']['displayName'])) {
-                        $roles[$perm['grantedToV2']['siteGroup']['displayName']] = $perm['roles'];
-                    }
-                }
-
-                $results['permissions']['status'] = true;
-                $results['permissions']['message'] = "Permissions récupérées.";
-                $results['permissions']['roles'] = $roles;
-
-                // 6. Vérifier l'accès sur le Drive en fonction des rôles
-                $driveRoles = array_merge(...array_values($roles)); // Fusionner tous les rôles en un seul tableau
-
-                if (in_array("owner", $driveRoles) || in_array("fullControl", $driveRoles)) {
-                    $results['driveAccess']['status'] = true;
-                    $results['driveAccess']['message'] = "L'utilisateur a un contrôle total sur le drive.";
-                } elseif (in_array("write", $driveRoles)) {
-                    $results['driveAccess']['status'] = true;
-                    $results['driveAccess']['message'] = "L'utilisateur peut modifier des fichiers.";
-                } elseif (in_array("read", $driveRoles)) {
-                    $results['driveAccess']['status'] = false;
-                    $results['driveAccess']['message'] = "L'utilisateur peut uniquement lire les fichiers.";
-                } else {
-                    throw new Exception("L'utilisateur n'a pas d'accès spécifique au drive.");
-                }
-
-            } else {
-                throw new Exception("Impossible de récupérer les permissions.");
-            }
-
-        } catch (Exception $e) {
-            $results['permissions']['message'] = $e->getMessage();
-            $results['driveAccess']['message'] = "Erreur lors de la récupération des permissions.";
-        }
-
-        return $results;
-    }
-
-    /**
-     * Fonction pour tester si Microsoft Graph Query est accessible (sans récupérer les fichiers)
-     */
-    public function testGraphQueryAccess() {
-        $accessToken = $this->getAccessToken();
-        
-        if (!$accessToken) {
-            return ['status' => false, 'message' => 'Échec de récupération du token d’accès'];
-        }
-
-        $search_url = 'https://graph.microsoft.com/v1.0/search/query';
-
-        // Définition d'une requête minimale pour tester l'accès
-        $search_data = [
-            "requests" => [
-                [
-                    "entityTypes" => ["driveItem"], // Vérifie l'accès aux fichiers SharePoint
-                    "query" => [
-                        "queryString" => "filetype:pdf" // Requête de base sans condition complexe
-                    ],
-                    "region" => "FRA"
-                ]
-            ]
-        ];
-
-        $search_data_json = json_encode($search_data);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            return ['status' => false, 'message' => 'Erreur lors de l’encodage JSON : ' . json_last_error_msg()];
-        }
-
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $search_url);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Authorization: Bearer ' . $accessToken,
-            'Content-Type: application/json'
-        ]);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $search_data_json);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
-        $response = curl_exec($ch);
-        if (curl_errno($ch)) {
-            curl_close($ch);
-            return ['status' => false, 'message' => 'Erreur cURL : ' . curl_error($ch)];
-        }
-
-        $http_status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($http_status == 200) {
-            return ['status' => true, 'message' => 'Accès à Microsoft Graph Query validé'];
-        } else {
-            return ['status' => false, 'message' => "Erreur de requête Graph API. Code HTTP : $http_status", 'response' => json_decode($response, true)];
-        }
-    }
-
-    /**
-     * Fonction générique pour envoyer une requête API avec cURL
-     */
-    public function apiRequest($url, $headers, $postData = null, $method = "GET") {
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        
-        if ($method === "POST") {
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
-        }
-
-        $response = curl_exec($ch);
-        $httpStatus = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($httpStatus >= 400) {
-            throw new Exception("Erreur HTTP $httpStatus lors de la requête à $url");
-        }
-
-        return json_decode($response, true);
+        return $out;
     }
 }

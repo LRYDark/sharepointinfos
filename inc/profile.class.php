@@ -54,17 +54,7 @@ class PluginSharepointinfosProfile extends Profile {
    static function getAllRights($all = false) {
       $rights = [
          ['itemtype' => 'PluginSharepointinfosConfig',
-            'label'    => __('Ajout de documents à signer', 'sharepointinfos'),
-            'field'    => 'plugin_sharepointinfos_add',
-            'rights'   => [READ    => __('Read'), UPDATE  => __('Update / Add / Delete')]
-         ],
-         ['itemtype' => 'PluginSharepointinfosConfig',
-            'label'    => __('Documents à signer', 'sharepointinfos'),
-            'field'    => 'plugin_sharepointinfos_sign',
-            'rights'   => [READ    => __('Read'), CREATE  => __('Signer'), PURGE  => __('Purge')]
-         ],
-         ['itemtype' => 'PluginSharepointinfosConfig',
-            'label'    => __('Tous les Documents', 'sharepointinfos'),
+            'label'    => __('Affichage des informations clients', 'sharepointinfos'),
             'field'    => 'plugin_sharepointinfos',
             'rights'   => [READ    => __('Read')]
          ],
@@ -135,9 +125,7 @@ class PluginSharepointinfosProfile extends Profile {
 
    static function createFirstAccess($profiles_id) {
       self::addDefaultProfileInfos($profiles_id,
-                                   ['plugin_sharepointinfos_add'          => ALLSTANDARDRIGHT,
-                                    'plugin_sharepointinfos_sign'         => ALLSTANDARDRIGHT,
-                                    'plugin_sharepointinfos'              => ALLSTANDARDRIGHT], true);
+                                   ['plugin_sharepointinfos'              => ALLSTANDARDRIGHT], true);
    }
 
    static function removeRightsFromSession() {
