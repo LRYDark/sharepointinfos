@@ -11,7 +11,7 @@ class PluginSharepointinfosProfile extends Profile {
 
    function getTabNameForItem(CommonGLPI $item, $withtemplate = 0) {
       if ($item->getType() == 'Profile') {
-         return __('SHAREPOINTINFOS', 'sharepointinfos');
+         return __('SharePoint Infos', 'sharepointinfos');
       }
       return '';
    }

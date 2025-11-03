@@ -34,7 +34,7 @@ class PluginSharepointinfosConfig extends CommonDBTM
 
    static function getTypeName($nb = 0)
    {
-      return __("Sharepointinfos Bl ", "sharepointinfos");
+      return __("SharePoint Infos", "sharepointinfos");
    }
 
    static function getInstance()
@@ -259,7 +259,7 @@ class PluginSharepointinfosConfig extends CommonDBTM
    {
 
       if ($item->getType() == 'Config') {
-         return __("Sharepointinfos BL", "sharepointinfos");
+         return __("SharePoint Infos", "sharepointinfos");
       }
       return '';
    }
