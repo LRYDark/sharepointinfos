@@ -19,7 +19,7 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
     protected $listDisplayName;
 
     protected array $excludeDisplays = [
-        'Balise de couleur','ID de ressource de conformité','ID','Modifié','Créé','Créé par','Modifié par',
+        'Titre','Balise de couleur','ID de ressource de conformité','ID','Modifié','Créé','Créé par','Modifié par',
         'Version','Pièces jointes','Modifier','Type',"Nombre d'éléments enfants","Nombre d’enfants du dossier",
         "Paramètres de l’étiquette","Étiquette de rétention","Étiquette de rétention appliquée","Étiquette appliquée par",
         "L’élément est un enregistrement",'Application créée par','Application modifiée par'
@@ -77,7 +77,30 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
             return $internalToDisplay;
         }
 
+        // --- Forcer l'ordre : colonne "Client" en premier ---
+        $ordered = [];
+
+        // essaie de trouver le nom interne de "Client"
+        $clientInternal = $this->findInternalByDisplayName($allColumns, 'Client', 'Title');
+
+        // si la recherche a vraiment trouvé "Client" (et pas le fallback "Title"),
+        // et si cette colonne est bien dans la map visible, on la met en tête
+        if ($clientInternal !== 'Title' && isset($internalToDisplay[$clientInternal])) {
+            $ordered[$clientInternal] = $internalToDisplay[$clientInternal];
+            unset($internalToDisplay[$clientInternal]);
+        }
+
+        // ajoute le reste dans l'ordre original
+        foreach ($internalToDisplay as $k => $v) {
+            $ordered[$k] = $v;
+        }
+
+        $internalToDisplay = $ordered;
+
+        // reconstruire $select après tri
         $select = implode(',', array_keys($internalToDisplay));
+        // ------------------------------------------------------
+
         $filter = $this->buildFilter($value, $by, $allColumns);
 
         $itemsUrl = GRAPH_BASE.'/sites/'.rawurlencode($siteId).'/lists/'.rawurlencode($listId)
@@ -192,19 +215,37 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
     protected function buildFilter(?string $value, string $by, array $allColumns): ?string {
         if ($value === null || $value === '') return null;
 
-        $codeSageInternal = 'field_1';
-        foreach ($allColumns as $c) {
-            if (isset($c['displayName']) && mb_strtolower($c['displayName']) === 'code sage') {
-                $codeSageInternal = $c['name'] ?? 'field_1';
-                break;
-            }
-        }
+        // Noms internes (robustes)
+        $clientInternal    = $this->findInternalByDisplayName($allColumns, 'Client', 'Title');
+        $codeSageInternal  = $this->findInternalByDisplayName($allColumns, 'Code Sage', 'field_1');
+        $titleInternal     = $this->findInternalByDisplayName($allColumns, 'Title', 'Title'); // nom interne standard
 
+        // Sécuriser les quotes pour OData
         $safe = str_replace("'", "''", $value);
+
+        // Construire les clauses selon $by
         $clauses = [];
-        if ($by === 'client' || $by === 'both')    $clauses[] = "fields/Title eq '$safe'";
-        if ($by === 'code_sage' || $by === 'both') $clauses[] = "fields/$codeSageInternal eq '$safe'";
-        if (empty($clauses))                        $clauses[] = "fields/Title eq '$safe'";
+        if ($by === 'client') {
+            $clauses[] = "fields/{$clientInternal} eq '{$safe}'";
+        } elseif ($by === 'code_sage') {
+            $clauses[] = "fields/{$codeSageInternal} eq '{$safe}'";
+        } elseif ($by === 'both') {
+            // Ancien comportement (Client OR Code Sage)
+            $clauses[] = "fields/{$clientInternal} eq '{$safe}'";
+            $clauses[] = "fields/{$codeSageInternal} eq '{$safe}'";
+        } elseif ($by === 'any') {
+            // Nouveau mode : Title OR Client OR Code Sage (sans doublons)
+            $seen = [];
+            foreach (array_unique([$titleInternal, $clientInternal, $codeSageInternal]) as $field) {
+                if ($field && !isset($seen[$field])) {
+                    $clauses[] = "fields/{$field} eq '{$safe}'";
+                    $seen[$field] = true;
+                }
+            }
+        } else {
+            // défaut : client
+            $clauses[] = "fields/{$clientInternal} eq '{$safe}'";
+        }
 
         return implode(' or ', $clauses);
     }
@@ -212,6 +253,20 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
     /* =======================================================
        HTTP Helper
        ======================================================= */
+
+    protected function findInternalByDisplayName(array $allColumns, string $wanted, string $fallback = 'Title'): string {
+        $wanted_norm = mb_strtolower(preg_replace('~\s+~u', ' ', trim($wanted)));
+        foreach ($allColumns as $c) {
+            $dn = $c['displayName'] ?? '';
+            $name = $c['name'] ?? '';
+            if (!$name) continue;
+            $dn_norm = mb_strtolower(preg_replace('~\s+~u', ' ', trim($dn)));
+            if ($dn_norm === $wanted_norm) {
+                return $name; // nom interne
+            }
+        }
+        return $fallback; // ex: 'Title' si on ne trouve pas
+    }
 
     protected function http_post_form(string $url, array $data): string {
         $ch = curl_init($url);
@@ -327,7 +382,14 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
 
         // 4) Requête simple items?$top=1
         if ($token && is_string($siteId) && $siteId !== '' && $listId) {
-            $url  = GRAPH_BASE.'/sites/'.rawurlencode($siteId).'/lists/'.rawurlencode($listId).'/items?$top=1&$expand='.rawurlencode('fields($select=Title)');
+            // Récupère les colonnes de ta liste
+            [$internalToDisplay, $allColumns] = $this->getVisibleColumns($token, $siteId, $listId);
+
+            // Trouve le nom interne de "Client"
+            $clientInternal = $this->findInternalByDisplayName($allColumns, 'Client', 'Title');
+
+            // Utilise-le dans l’expand
+            $url  = GRAPH_BASE.'/sites/'.rawurlencode($siteId).'/lists/'.rawurlencode($listId).'/items?$top=1&$expand='.rawurlencode("fields(\$select={$clientInternal})");
             $resp = $this->http_get_json($url, [
                 'Authorization: Bearer '.$token,
                 'Prefer: HonorNonIndexedQueriesWarningMayFailRandomly'

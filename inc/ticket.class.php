@@ -51,7 +51,8 @@ class PluginSharepointinfosTicket extends CommonDBTM {
 
       if (!empty($entityName)) {
          $sp = new PluginSharepointinfosSharepoint();
-         $result = $sp->getListItemsFromConfig($entityName, 'both');
+         $result = $sp->getListItemsFromConfig($entityName, 'any');
+
          $config = new PluginSharepointinfosConfig();
 
          if (!empty($result)) {
