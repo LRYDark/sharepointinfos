@@ -49,39 +49,40 @@ class PluginSharepointinfosTicket extends CommonDBTM {
 
       require_once PLUGIN_SHAREPOINTINFOS_DIR.'/front/SharePointGraph.php';
 
-if (!empty($entityName)) {
-    $sp = new PluginSharepointinfosSharepoint();
-    $result = $sp->getListItemsFromConfig($entityName, 'both');
+      if (!empty($entityName)) {
+         $sp = new PluginSharepointinfosSharepoint();
+         $result = $sp->getListItemsFromConfig($entityName, 'both');
+         $config = new PluginSharepointinfosConfig();
 
-    if (!empty($result)) {
-        foreach ($result as $item) {
-            echo '<div style="background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin: 20px 0; overflow: hidden;">';
-            echo '<table style="width: 100%; border-collapse: collapse;">';
-            echo '<tbody>';
-            
-            foreach ($item as $field => $value) {
-                echo '<tr style="border-bottom: 1px solid #f0f0f0; transition: background 0.2s;">';
-                echo '<td style="width: 30%; padding: 18px 24px; font-weight: 600; color: #2c3e50; background: #fafafa;">' . $field . '</td>';
-                echo '<td style="padding: 18px 24px; color: #34495e;">' . ($value ?? '<span style="color: #95a5a6;">—</span>') . '</td>';
-                echo '</tr>';
+         if (!empty($result)) {
+            foreach ($result as $item) {
+                  echo '<div style="background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin: 20px 0; overflow: hidden;">';
+                  echo '<table style="width: 100%; border-collapse: collapse;">';
+                  echo '<tbody>';
+                  
+                  foreach ($item as $field => $value) {
+                     echo '<tr style="border-bottom: 1px solid #f0f0f0; transition: background 0.2s;">';
+                     echo '<td style="width: 30%; padding: 18px 24px; font-weight: 600; color: #2c3e50; background: #fafafa;">' . $field . '</td>';
+                     echo '<td style="padding: 18px 24px; color: #34495e;">' . ($value ?? '<span style="color: #95a5a6;">—</span>') . '</td>';
+                     echo '</tr>';
+                  }
+                  
+                  echo '</tbody>';
+                  echo '</table>';
+                  echo '</div>';
             }
             
-            echo '</tbody>';
-            echo '</table>';
+            // Bouton de redirection vers SharePoint en bas
+            echo '<div style="margin: 20px 0; text-align: right;">';
+            echo '<a href="' . $config->Link() . '?q=' . $entityName . '" target="_blank" style="display: inline-block; padding: 10px 20px; background: #0078d4; color: #fff; text-decoration: none; border-radius: 4px; font-weight: 500; transition: background 0.3s;">';        echo '<i class="fas fa-external-link-alt" style="margin-right: 8px;"></i>';
+            echo 'Voir sur SharePoint';
+            echo '</a>';
             echo '</div>';
-        }
-        
-        // Bouton de redirection vers SharePoint en bas
-        echo '<div style="margin: 20px 0; text-align: right;">';
-        echo '<a href="https://globalinfo763.sharepoint.com/sites/clients/Lists/Liste%20techno/AllItems.aspx?view=7&q=' . $entityName . '" target="_blank" style="display: inline-block; padding: 10px 20px; background: #0078d4; color: #fff; text-decoration: none; border-radius: 4px; font-weight: 500; transition: background 0.3s;">';        echo '<i class="fas fa-external-link-alt" style="margin-right: 8px;"></i>';
-        echo 'Voir sur SharePoint';
-        echo '</a>';
-        echo '</div>';
-    } else {
-        echo '<div class="alert alert-info">Aucune information trouvée pour cette entité</div>';
-    }
-} else {
-    echo '<div class="alert alert-info">Aucune information trouvée ou entité vide</div>';   
-}
+         } else {
+            echo '<div class="alert alert-info">Aucune information trouvée pour cette entité</div>';
+         }
+      } else {
+         echo '<div class="alert alert-info">Aucune information trouvée ou entité vide</div>';   
+      }
    }
 }

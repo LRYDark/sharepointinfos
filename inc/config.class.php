@@ -112,7 +112,7 @@ class PluginSharepointinfosConfig extends CommonDBTM
                   <?php echo __('Lien de redirection vers la liste', 'sharepointinfos'); ?>
                </label>
                <?php echo Html::input('Link', ['value' => $config->Link(), 'class' => 'form-control', 'id' => 'Link', 'placeholder' => 'Liste techno']); ?>
-               <small class="form-text text-muted">https://globalinfo763.sharepoint.com/sites/clients/Lists/Liste%20techno/AllItems.aspx?view=7&q=XXX (XXX -> Entité du client automatique)</small>
+               <small class="form-text text-muted">https://globalinfo763.sharepoint.com/sites/XXXXX/Lists/XXXXX/AllItems.aspx</small>
             </div>
             </div>
          </div>
