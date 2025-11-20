@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 if (!defined('GLPI_ROOT')) {
    die("Sorry. You can't access directly to this file");
@@ -54,6 +54,66 @@ class PluginSharepointinfosTicket extends CommonDBTM {
          $result = $sp->getListItemsFromConfig($entityName, 'any');
 
          $config = new PluginSharepointinfosConfig();
+         $escape = function ($str) {
+            return htmlspecialchars((string)$str, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+         };
+         $isUrl = function ($str) {
+            return is_string($str) && filter_var($str, FILTER_VALIDATE_URL);
+         };
+         $formatValue = function ($val) use ($escape, $isUrl, &$formatValue) {
+            if (is_array($val)) {
+               // Si tous les éléments du tableau sont des URLs, on affiche la liste de liens cliquables
+               $urlValues = [];
+               foreach ($val as $v) {
+                  if ($isUrl($v)) {
+                     $urlValues[$v] = true;
+                  } else {
+                     $urlValues = [];
+                     break;
+                  }
+               }
+               if (!empty($urlValues)) {
+                  return implode('<br>', array_map(function ($url) use ($escape) {
+                     return '<a href="' . $escape($url) . '" target="_blank" style="color: #0b71d9; text-decoration: none;">' . $escape($url) . '</a>';
+                  }, array_keys($urlValues)));
+               }
+
+               $items = [];
+               foreach ($val as $k => $v) {
+                  $label = is_string($k) ? '<strong>' . $escape($k) . ':</strong> ' : '';
+                  $items[] = '<li style="margin:4px 0;">' . $label . $formatValue($v) . '</li>';
+               }
+               return '<ul style="margin:0; padding-left:18px;">' . implode('', $items) . '</ul>';
+            }
+
+            if ($val === null || $val === '') {
+               return '<span style="color: #95a5a6;">-</span>';
+            }
+
+            // Badges de statut
+            $normalized = strtolower(trim((string)$val));
+            $style = null;
+            if (strpos($normalized, 'configur') !== false) {
+               $style = ['bg' => '#dff2e1', 'border' => '#a4d8ac', 'text' => '#2f7d35'];
+            } else if (strpos($normalized, 'compatib') !== false) {
+               $style = ['bg' => '#e6f1fb', 'border' => '#b6d2f4', 'text' => '#2d6db5'];
+            } else if (strpos($normalized, 'inconn') !== false) {
+               $style = ['bg' => '#f3f4f6', 'border' => '#d8dbe0', 'text' => '#6b7280'];
+            }
+            if ($style !== null) {
+               $st = $style;
+               return '<span style="display:inline-block;padding:4px 10px;border-radius:16px;border:1px solid ' 
+                     . $st['border'] . ';background:' . $st['bg'] . ';color:' . $st['text']
+                     . ';font-weight:600;font-size:13px;">' . $escape($val) . '</span>';
+            }
+
+            // URLs cliquables
+            if ($isUrl($val)) {
+               return '<a href="' . $escape($val) . '" target="_blank" style="color: #0b71d9; text-decoration: none;">' . $escape($val) . '</a>';
+            }
+
+            return $escape($val);
+         };
 
          if (!empty($result)) {
             foreach ($result as $item) {
@@ -63,8 +123,8 @@ class PluginSharepointinfosTicket extends CommonDBTM {
                   
                   foreach ($item as $field => $value) {
                      echo '<tr style="border-bottom: 1px solid #f0f0f0; transition: background 0.2s;">';
-                     echo '<td style="width: 30%; padding: 18px 24px; font-weight: 600; color: #2c3e50; background: #fafafa;">' . $field . '</td>';
-                     echo '<td style="padding: 18px 24px; color: #34495e;">' . ($value ?? '<span style="color: #95a5a6;">—</span>') . '</td>';
+                     echo '<td style="width: 30%; padding: 18px 24px; font-weight: 600; color: #2c3e50; background: #fafafa;">' . $escape($field) . '</td>';
+                     echo '<td style="padding: 18px 24px; color: #34495e;">' . $formatValue($value) . '</td>';
                      echo '</tr>';
                   }
                   
@@ -87,3 +147,7 @@ class PluginSharepointinfosTicket extends CommonDBTM {
       }
    }
 }
+
+
+
+
