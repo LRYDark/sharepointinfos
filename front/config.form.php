@@ -26,7 +26,6 @@ function encryptArray($array) {
 }
 
 if (isset($_POST["update"])) {
-   $config->check($_POST['id'], UPDATE);
    $encrypted_post = encryptArray($_POST);
 
    if(!$config->update($encrypted_post)){

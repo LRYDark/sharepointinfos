@@ -3,9 +3,9 @@ define('PLUGIN_SHAREPOINTINFOS_VERSION', '1.0.3'); // version du plugin
 $_SESSION['PLUGIN_SHAREPOINTINFOS_VERSION'] = PLUGIN_SHAREPOINTINFOS_VERSION;
 
 // Minimal GLPI version,
-define("PLUGIN_SHAREPOINTINFOS_MIN_GLPI", "10.0.3");
+define("PLUGIN_SHAREPOINTINFOS_MIN_GLPI", "11.0.0");
 // Maximum GLPI version,
-define("PLUGIN_SHAREPOINTINFOS_MAX_GLPI", "10.2.0");
+define("PLUGIN_SHAREPOINTINFOS_MAX_GLPI", "11.1.0");
 
 define("PLUGIN_SHAREPOINTINFOS_WEBDIR", Plugin::getWebDir("sharepointinfos"));
 define("PLUGIN_SHAREPOINTINFOS_DIR", Plugin::getPhpDir("sharepointinfos"));
@@ -27,7 +27,7 @@ function plugin_init_sharepointinfos() { // fonction glpi d'initialisation du pl
 
       Plugin::registerClass('PluginSharepointinfosTicket', ['addtabon' => 'Ticket']);
 
-      $PLUGIN_HOOKS['config_page']['sharepointinfos'] = 'front/config.form.php'; // initialisation de la page config
+      $PLUGIN_HOOKS['config_page']['sharepointinfos'] = '../../front/config.form.php?forcetab=' . urlencode('PluginSharepointinfosConfig$1'); // initialisation de la page config
       Plugin::registerClass('PluginSharepointinfosConfig', ['addtabon' => 'Config']); // ajout de la de la class config dans glpi
 
       $PLUGIN_HOOKS['post_show_item']['sharepointinfos'] = ['PluginSharepointinfosTicket', 'postShowItemNewTicketSHAREPOINTINFOS']; // initialisation de la class

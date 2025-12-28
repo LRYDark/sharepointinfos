@@ -17,24 +17,13 @@ class PluginSharepointinfosConfig extends CommonDBTM
       }
    }
 
-   static function canCreate()
-   {
-      return Session::haveRight('config', UPDATE);
-   }
-
-   static function canView()
-   {
-      return Session::haveRight('config', READ);
-   }
-
-   static function canUpdate()
-   {
-      return Session::haveRight('config', UPDATE);
-   }
-
    static function getTypeName($nb = 0)
    {
+<<<<<<< Updated upstream
       return __("SharePoint Infos", "sharepointinfos");
+=======
+      return __('<span class="d-flex align-items-center"><i class="fa-solid fa-share-alt me-2"></i>Sharepoint Infos</span>', "sharepointinfos");
+>>>>>>> Stashed changes
    }
 
    static function getInstance()
@@ -241,6 +230,13 @@ class PluginSharepointinfosConfig extends CommonDBTM
      
       <?php
 
+      echo "<table class='tab_cadre_fixe'>";
+         echo "<tr class='tab_bg_1'>";
+            echo "<td class='right'>";
+               echo "<input type='submit' class='submit' name='update' value=\"" . __('Save') . "\">";
+            echo "</td>";
+         echo "</tr>";
+      echo "</table>";
       $config->showFormButtons(['candel' => false]);
       return false;
    }
@@ -257,9 +253,12 @@ class PluginSharepointinfosConfig extends CommonDBTM
 
    function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
    {
-
       if ($item->getType() == 'Config') {
+<<<<<<< Updated upstream
          return __("SharePoint Infos", "sharepointinfos");
+=======
+         return __('<span class="d-flex align-items-center"><i class="fa-solid fa-share-alt me-2"></i>Sharepoint Infos</span>', "sharepointinfos");
+>>>>>>> Stashed changes
       }
       return '';
    }
@@ -306,7 +305,7 @@ class PluginSharepointinfosConfig extends CommonDBTM
                   `Link` TEXT NULL,
                   PRIMARY KEY (`id`)
          ) ENGINE=InnoDB DEFAULT CHARSET={$default_charset} COLLATE={$default_collation} ROW_FORMAT=DYNAMIC;";
-         $DB->query($query) or die($DB->error());
+         $DB->doQuery($query) or die($DB->error());
          $config->add(['id' => 1,]);
       }
    }
