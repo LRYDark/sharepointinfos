@@ -1,11 +1,11 @@
 <?php
-define('PLUGIN_SHAREPOINTINFOS_VERSION', '1.0.3'); // version du plugin
+define('PLUGIN_SHAREPOINTINFOS_VERSION', '1.1.1'); // version du plugin
 $_SESSION['PLUGIN_SHAREPOINTINFOS_VERSION'] = PLUGIN_SHAREPOINTINFOS_VERSION;
 
 // Minimal GLPI version,
 define("PLUGIN_SHAREPOINTINFOS_MIN_GLPI", "11.0.0");
 // Maximum GLPI version,
-define("PLUGIN_SHAREPOINTINFOS_MAX_GLPI", "11.1.0");
+define("PLUGIN_SHAREPOINTINFOS_MAX_GLPI", "11.2.0");
 
 define("PLUGIN_SHAREPOINTINFOS_WEBDIR", Plugin::getWebDir("sharepointinfos"));
 define("PLUGIN_SHAREPOINTINFOS_DIR", Plugin::getPhpDir("sharepointinfos"));
