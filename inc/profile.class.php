@@ -11,12 +11,8 @@ class PluginSharepointinfosProfile extends Profile {
 
    function getTabNameForItem(CommonGLPI $item, $withtemplate = 0) {
       if ($item->getType() == 'Profile') {
-<<<<<<< Updated upstream
-         return __('SharePoint Infos', 'sharepointinfos');
-=======
          //return __('SHAREPOINTINFOS', 'sharepointinfos');
          return __('<span class="d-flex align-items-center"><i class="fa-solid fa-share-alt me-2"></i>Sharepoint Infos</span>', "sharepointinfos");
->>>>>>> Stashed changes
       }
       return '';
    }
@@ -105,34 +101,33 @@ class PluginSharepointinfosProfile extends Profile {
          }
       }
 
-foreach ($DB->request([
-   'FROM'  => 'glpi_profilerights',
-   'WHERE' => [
-      'profiles_id' => (int) $_SESSION['glpiactiveprofile']['id'],
-      'name'        => ['LIKE', '%plugin_rp%'],
-   ]
-]) as $prof) {
-   $_SESSION['glpiactiveprofile'][$prof['name']] = $prof['rights'];
-}
+      foreach ($DB->request([
+         'FROM'  => 'glpi_profilerights',
+         'WHERE' => [
+            'profiles_id' => (int) $_SESSION['glpiactiveprofile']['id'],
+            'name'        => ['LIKE', '%plugin_rp%'],
+         ]
+      ]) as $prof) {
+         $_SESSION['glpiactiveprofile'][$prof['name']] = $prof['rights'];
+      }
 
-   }
+         }
 
-   /**
-    * Initialize profiles, and migrate it necessary
-    */
-   static function changeProfile() {
-      global $DB;
+         /**
+          * Initialize profiles, and migrate it necessary
+         */
+         static function changeProfile() {
+            global $DB;
 
-foreach ($DB->request([
-   'FROM'  => 'glpi_profilerights',
-   'WHERE' => [
-      'profiles_id' => (int) $_SESSION['glpiactiveprofile']['id'],
-      'name'        => ['LIKE', '%plugin_rp%'],
-   ]
-]) as $prof) {
-   $_SESSION['glpiactiveprofile'][$prof['name']] = $prof['rights'];
-}
-
+      foreach ($DB->request([
+         'FROM'  => 'glpi_profilerights',
+         'WHERE' => [
+            'profiles_id' => (int) $_SESSION['glpiactiveprofile']['id'],
+            'name'        => ['LIKE', '%plugin_rp%'],
+         ]
+      ]) as $prof) {
+         $_SESSION['glpiactiveprofile'][$prof['name']] = $prof['rights'];
+      }
    }
 
    static function createFirstAccess($profiles_id) {

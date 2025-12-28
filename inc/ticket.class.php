@@ -58,8 +58,6 @@ class PluginSharepointinfosTicket extends CommonDBTM {
       if (!empty($entityName)) {
          $sp = new PluginSharepointinfosSharepoint();
          $result = $sp->getListItemsFromConfig($entityName, 'any');
-<<<<<<< Updated upstream
-
          $config = new PluginSharepointinfosConfig();
          $escape = function ($str) {
             return htmlspecialchars((string)$str, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -85,33 +83,6 @@ class PluginSharepointinfosTicket extends CommonDBTM {
                   }, array_keys($urlValues)));
                }
 
-=======
-         $config = new PluginSharepointinfosConfig();
-         $escape = function ($str) {
-            return htmlspecialchars((string)$str, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-         };
-         $isUrl = function ($str) {
-            return is_string($str) && filter_var($str, FILTER_VALIDATE_URL);
-         };
-         $formatValue = function ($val) use ($escape, $isUrl, &$formatValue) {
-            if (is_array($val)) {
-               // Si tous les éléments du tableau sont des URLs, on affiche la liste de liens cliquables
-               $urlValues = [];
-               foreach ($val as $v) {
-                  if ($isUrl($v)) {
-                     $urlValues[$v] = true;
-                  } else {
-                     $urlValues = [];
-                     break;
-                  }
-               }
-               if (!empty($urlValues)) {
-                  return implode('<br>', array_map(function ($url) use ($escape) {
-                     return '<a href="' . $escape($url) . '" target="_blank" style="color: #0b71d9; text-decoration: none;">' . $escape($url) . '</a>';
-                  }, array_keys($urlValues)));
-               }
-
->>>>>>> Stashed changes
                $items = [];
                foreach ($val as $k => $v) {
                   $label = is_string($k) ? '<strong>' . $escape($k) . ':</strong> ' : '';

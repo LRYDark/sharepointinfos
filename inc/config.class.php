@@ -19,11 +19,7 @@ class PluginSharepointinfosConfig extends CommonDBTM
 
    static function getTypeName($nb = 0)
    {
-<<<<<<< Updated upstream
-      return __("SharePoint Infos", "sharepointinfos");
-=======
       return __('<span class="d-flex align-items-center"><i class="fa-solid fa-share-alt me-2"></i>Sharepoint Infos</span>', "sharepointinfos");
->>>>>>> Stashed changes
    }
 
    static function getInstance()
@@ -254,11 +250,7 @@ class PluginSharepointinfosConfig extends CommonDBTM
    function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
    {
       if ($item->getType() == 'Config') {
-<<<<<<< Updated upstream
-         return __("SharePoint Infos", "sharepointinfos");
-=======
          return __('<span class="d-flex align-items-center"><i class="fa-solid fa-share-alt me-2"></i>Sharepoint Infos</span>', "sharepointinfos");
->>>>>>> Stashed changes
       }
       return '';
    }
