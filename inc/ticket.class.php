@@ -13,20 +13,19 @@ class PluginSharepointinfosTicket extends CommonDBTM {
    }
 
    static function getTypeName($nb = 0) {
-      if(Session::haveRight("plugin_sharepointinfos", READ)){
-         //return _n('Infos Clients', 'Infos Clients', $nb, 'sharepointinfos');
-         return __('<span class="d-flex align-items-center"><i class="fa-solid fa-share-alt me-2"></i>Infos Clients</span>', "sharepointinfos");
-
-      }
+      //return _n('Infos Clients', 'Infos Clients', $nb, 'sharepointinfos');
+      return __('<span class="d-flex align-items-center"><i class="fa-solid fa-share-alt me-2"></i>Infos Clients</span>', "sharepointinfos");
    }
 
    function getTabNameForItem(CommonGLPI $item, $withtemplate = 0) {
-      $nb = 0;
-      switch ($item->getType()) {
-         case 'Ticket' :
-            return self::getTypeName($nb);
+      if(Session::haveRight("plugin_sharepointinfos", READ)){
+         $nb = 0;
+         switch ($item->getType()) {
+            case 'Ticket' :
+               return self::getTypeName($nb);
+         }
+         return '';
       }
-      return '';
    }
 
    static function displayTabContentForItem(CommonGLPI $item, $tabnum = 1, $withtemplate = 0) {
