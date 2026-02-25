@@ -11,12 +11,15 @@ if (!defined('GRAPH_BASE'))  define('GRAPH_BASE', 'https://graph.microsoft.com/v
 if (!defined('GRAPH_SCOPE')) define('GRAPH_SCOPE', 'https://graph.microsoft.com/.default');
 
 class PluginSharepointinfosSharepoint extends CommonDBTM {
+    private const HTTP_TIMEOUT = 30;
+    private const HTTP_CONNECT_TIMEOUT = 5;
 
     protected $tenantId;
     protected $clientId;
     protected $clientSecret;
     protected $siteUrl;
     protected $listDisplayName;
+    protected ?string $cachedAccessToken = null;
 
     protected array $excludeDisplays = [
         'Titre','Balise de couleur','ID de ressource de conformité','ID','Modifié','Créé','Créé par','Modifié par',
@@ -135,6 +138,10 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
        ======================================================= */
 
     protected function getAccessToken(): ?string {
+        if ($this->cachedAccessToken !== null && $this->cachedAccessToken !== '') {
+            return $this->cachedAccessToken;
+        }
+
         $tokenUrl = "https://login.microsoftonline.com/{$this->tenantId}/oauth2/v2.0/token";
         $body = $this->http_post_form($tokenUrl, [
             'client_id'     => $this->clientId,
@@ -143,7 +150,8 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
             'scope'         => GRAPH_SCOPE
         ]);
         $json = json_decode($body, true);
-        return $json['access_token'] ?? null;
+        $this->cachedAccessToken = $json['access_token'] ?? null;
+        return $this->cachedAccessToken;
     }
 
     protected function resolveSiteIdFromConfig(string $token) {
@@ -274,6 +282,8 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST           => true,
             CURLOPT_POSTFIELDS     => http_build_query($data),
+            CURLOPT_TIMEOUT        => self::HTTP_TIMEOUT,
+            CURLOPT_CONNECTTIMEOUT => self::HTTP_CONNECT_TIMEOUT,
         ]);
         $body = curl_exec($ch);
         curl_close($ch);
@@ -285,6 +295,8 @@ class PluginSharepointinfosSharepoint extends CommonDBTM {
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER     => $headers,
+            CURLOPT_TIMEOUT        => self::HTTP_TIMEOUT,
+            CURLOPT_CONNECTTIMEOUT => self::HTTP_CONNECT_TIMEOUT,
         ]);
         $body = curl_exec($ch);
         $info = curl_getinfo($ch);

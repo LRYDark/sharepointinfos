@@ -39,6 +39,7 @@ class PluginSharepointinfosTicket extends CommonDBTM {
 
    static function showForTicket(Ticket $ticket) {
       Global $CFG_GLPI, $DB;
+      static $sharepointRowsCache = [];
 
       $entityID = $ticket->getField('entities_id');
 
@@ -55,8 +56,11 @@ class PluginSharepointinfosTicket extends CommonDBTM {
       require_once PLUGIN_SHAREPOINTINFOS_DIR.'/front/SharePointGraph.php';
 
       if (!empty($entityName)) {
-         $sp = new PluginSharepointinfosSharepoint();
-         $result = $sp->getListItemsFromConfig($entityName, 'any');
+         if (!array_key_exists($entityName, $sharepointRowsCache)) {
+            $sp = new PluginSharepointinfosSharepoint();
+            $sharepointRowsCache[$entityName] = $sp->getListItemsFromConfig($entityName, 'any');
+         }
+         $result = $sharepointRowsCache[$entityName];
          $config = new PluginSharepointinfosConfig();
          $escape = function ($str) {
             return htmlspecialchars((string)$str, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -151,7 +155,6 @@ class PluginSharepointinfosTicket extends CommonDBTM {
       }
    }
 }
-
 
 
 

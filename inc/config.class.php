@@ -41,7 +41,10 @@ class PluginSharepointinfosConfig extends CommonDBTM
 
       $sharepoint = new PluginSharepointinfosSharepoint();
       $config->showFormHeader(['colspan' => 4]);
-      echo '</table>';
+      // showFormHeader() opens <table><tr><td>; close them properly before rendering card layout
+      echo '</td></tr></table>';
+      // Dedicated standalone token for plugin actions on this page
+      echo Html::hidden('plugin_sharepointinfos_csrf_token', ['value' => Session::getNewCSRFToken(true)]);
       ?>
 
       <!-- CARD : Connexion SharePoint -->
@@ -233,6 +236,8 @@ class PluginSharepointinfosConfig extends CommonDBTM
             echo "</td>";
          echo "</tr>";
       echo "</table>";
+      // showFormButtons() closes a table before rendering buttons; open a minimal one to keep valid HTML
+      echo "<table class='tab_cadre_fixe'>";
       $config->showFormButtons(['candel' => false]);
       return false;
    }
@@ -265,9 +270,49 @@ class PluginSharepointinfosConfig extends CommonDBTM
    }
 
    function decryptData($data) {
-      // Clé de cryptage - Doit correspondre à la clé utilisée pour le cryptage
-      $encryption_key = 'votre_clé_de_cryptage';
-      return openssl_decrypt(base64_decode($data), 'aes-256-cbc', $encryption_key, 0, '1234567890123456');
+      return PluginSharepointinfosCrypto::decrypt((string)$data);
+   }
+
+   private static function migrateEncryptedFieldsToSodium(Migration $migration): void
+   {
+      global $DB;
+
+      $table = self::getTable();
+      if (!$DB->tableExists($table)) {
+         return;
+      }
+
+      $row = $DB->request([
+         'SELECT' => ['id', 'TenantID', 'ClientID', 'ClientSecret', 'Hostname', 'SitePath', 'ListDisplayName', 'Link'],
+         'FROM'   => $table,
+         'WHERE'  => ['id' => 1],
+         'LIMIT'  => 1
+      ])->current();
+
+      if (!is_array($row)) {
+         return;
+      }
+
+      $updates = [];
+      foreach (['TenantID', 'ClientID', 'ClientSecret', 'Hostname', 'SitePath', 'ListDisplayName', 'Link'] as $field) {
+         $raw = (string)($row[$field] ?? '');
+         if ($raw === '') {
+            continue;
+         }
+         try {
+            $migrated = PluginSharepointinfosCrypto::migrateIfLegacy($raw);
+         } catch (Throwable $e) {
+            continue;
+         }
+         if (is_string($migrated) && $migrated !== $raw) {
+            $updates[$field] = $migrated;
+         }
+      }
+
+      if (!empty($updates)) {
+         $DB->update($table, $updates, ['id' => (int)$row['id']]);
+         $migration->displayMessage('Migration chiffrement config SharePoint Infos vers sodium');
+      }
    }
   
    static function install(Migration $migration)
@@ -300,6 +345,8 @@ class PluginSharepointinfosConfig extends CommonDBTM
          $DB->doQuery($query) or die($DB->error());
          $config->add(['id' => 1,]);
       }
+
+      self::migrateEncryptedFieldsToSodium($migration);
    }
 
    static function uninstall(Migration $migration)
