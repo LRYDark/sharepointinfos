@@ -1,21 +1,20 @@
 <?php
-define('PLUGIN_SHAREPOINTINFOS_VERSION', '1.1.2'); // version du plugin
+define('PLUGIN_SHAREPOINTINFOS_VERSION', '1.2.0'); // version du plugin
 $_SESSION['PLUGIN_SHAREPOINTINFOS_VERSION'] = PLUGIN_SHAREPOINTINFOS_VERSION;
 
 // Minimal GLPI version,
-define("PLUGIN_SHAREPOINTINFOS_MIN_GLPI", "11.0.0");
+define("PLUGIN_SHAREPOINTINFOS_MIN_GLPI", "12.0.0");
 // Maximum GLPI version,
-define("PLUGIN_SHAREPOINTINFOS_MAX_GLPI", "11.2.0");
+define("PLUGIN_SHAREPOINTINFOS_MAX_GLPI", "12.0.99");
 
-define("PLUGIN_SHAREPOINTINFOS_WEBDIR", Plugin::getWebDir("sharepointinfos"));
+define("PLUGIN_SHAREPOINTINFOS_WEBDIR", ($GLOBALS['CFG_GLPI']['root_doc'] ?? '') . '/plugins/sharepointinfos');
 define("PLUGIN_SHAREPOINTINFOS_DIR", Plugin::getPhpDir("sharepointinfos"));
 define("PLUGIN_SHAREPOINTINFOS_NOTFULL_DIR", Plugin::getPhpDir("sharepointinfos",false));
-define("PLUGIN_SHAREPOINTINFOS_NOTFULL_WEBDIR", Plugin::getWebDir("sharepointinfos",false));
+define("PLUGIN_SHAREPOINTINFOS_NOTFULL_WEBDIR", 'plugins/sharepointinfos');
 
 function plugin_init_sharepointinfos() { // fonction glpi d'initialisation du plugin
    global $PLUGIN_HOOKS, $CFG_GLPI;
 
-   $PLUGIN_HOOKS['csrf_compliant']['sharepointinfos'] = true;
    $PLUGIN_HOOKS['change_profile']['sharepointinfos'] = [PluginSharepointinfosProfile::class, 'initProfile'];
 
    $plugin = new Plugin();

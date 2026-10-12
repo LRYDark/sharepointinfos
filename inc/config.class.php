@@ -43,8 +43,6 @@ class PluginSharepointinfosConfig extends CommonDBTM
       $config->showFormHeader(['colspan' => 4]);
       // showFormHeader() opens <table><tr><td>; close them properly before rendering card layout
       echo '</td></tr></table>';
-      // Dedicated standalone token for plugin actions on this page
-      echo Html::hidden('plugin_sharepointinfos_csrf_token', ['value' => Session::getNewCSRFToken(true)]);
       ?>
 
       <!-- CARD : Connexion SharePoint -->

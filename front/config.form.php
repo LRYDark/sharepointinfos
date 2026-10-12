@@ -1,9 +1,8 @@
 <?php
-include('../../../inc/includes.php');
 
 $plugin = new Plugin();
 if (!$plugin->isInstalled('sharepointinfos') || !$plugin->isActivated('sharepointinfos')) {
-   Html::displayNotFoundError();
+   throw new \Glpi\Exception\Http\NotFoundHttpException();
 }
 
 Session::checkRight('config', UPDATE);
@@ -28,19 +27,8 @@ function encryptArray($array) {
    return $encrypted_array;
 }
 
-function pluginSharepointinfosCheckCSRF(array $data): void {
-   if (!empty($data['plugin_sharepointinfos_csrf_token'])) {
-      Session::checkCSRF([
-         '_glpi_csrf_token' => (string)$data['plugin_sharepointinfos_csrf_token']
-      ], true);
-      return;
-   }
-
-   Session::checkCSRF($data, true);
-}
-
+// GLPI 12 : la protection CSRF est assurée par le noyau (en-têtes Sec-Fetch-Site / Origin), sans jeton.
 if (isset($_POST["update"])) {
-   pluginSharepointinfosCheckCSRF($_POST);
    $encrypted_post = encryptArray($_POST);
 
    if(!$config->update($encrypted_post)){
@@ -53,4 +41,6 @@ if (isset($_POST["update"])) {
    Html::back();
 }
 
+// Fichier charge depuis une methode de GLPI : $CFG_GLPI n'y est visible qu'avec « global ».
+global $CFG_GLPI;
 Html::redirect($CFG_GLPI["root_doc"] . "/front/config.form.php?forcetab=" . urlencode('PluginSharepointinfosConfig$1'));

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 if (!defined('GLPI_ROOT')) {
    die("Sorry. You can't access directly to this file");
@@ -6,7 +6,7 @@ if (!defined('GLPI_ROOT')) {
 
 class PluginSharepointinfosTicket extends CommonDBTM {
 
-   public static $rightname = 'sharepointinfos';
+   public static string $rightname = 'sharepointinfos';
 
    static function getIcon() {
       return "fa-solid fa-file-contract";

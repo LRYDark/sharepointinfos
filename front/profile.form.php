@@ -1,8 +1,5 @@
 <?php
-define('GLPI_ROOT', '../../..');
-include(GLPI_ROOT . "/inc/includes.php");
-
-Session::checkRight("profile", "sharepointinfos");
+Session::checkRight("profile", UPDATE);
 
 $prof = new PluginSharepointinfosProfile();
 
