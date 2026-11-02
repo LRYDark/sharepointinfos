@@ -19,7 +19,8 @@ class PluginSharepointinfosConfig extends CommonDBTM
 
    static function getTypeName($nb = 0)
    {
-      return __('<span class="d-flex align-items-center"><i class="fa-solid fa-share-alt me-2"></i>Sharepoint Infos</span>', "sharepointinfos");
+      // Texte simple : GLPI l'échappe dans ses messages (« Élément modifié : … ») ; l'icône est dans l'onglet.
+      return __('Sharepoint Infos', 'sharepointinfos');
    }
 
    static function getInstance()

@@ -14,7 +14,8 @@ class PluginSharepointinfosTicket extends CommonDBTM {
 
    static function getTypeName($nb = 0) {
       //return _n('Infos Clients', 'Infos Clients', $nb, 'sharepointinfos');
-      return __('<span class="d-flex align-items-center"><i class="fa-solid fa-share-alt me-2"></i>Infos Clients</span>', "sharepointinfos");
+      // Texte simple : GLPI l'échappe dans ses messages ; l'icône est dans l'onglet.
+      return __('Infos Clients', 'sharepointinfos');
    }
 
    function getTabNameForItem(CommonGLPI $item, $withtemplate = 0) {
@@ -22,7 +23,8 @@ class PluginSharepointinfosTicket extends CommonDBTM {
          $nb = 0;
          switch ($item->getType()) {
             case 'Ticket' :
-               return self::getTypeName($nb);
+               return '<span class="d-flex align-items-center"><i class="fa-solid fa-share-alt me-2"></i>'
+                  . htmlescape(self::getTypeName($nb)) . '</span>';
          }
          return '';
       }
