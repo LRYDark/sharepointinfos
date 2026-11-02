@@ -16,6 +16,8 @@ function plugin_init_sharepointinfos() { // fonction glpi d'initialisation du pl
    global $PLUGIN_HOOKS, $CFG_GLPI;
 
    $PLUGIN_HOOKS['change_profile']['sharepointinfos'] = [PluginSharepointinfosProfile::class, 'initProfile'];
+   // Secrets chiffrés avec la clé de GLPI : s'il change de clé, il les rechiffre lui-même.
+   $PLUGIN_HOOKS['secured_fields']['sharepointinfos'] = ['glpi_plugin_sharepointinfos_configs.TenantID', 'glpi_plugin_sharepointinfos_configs.ClientID', 'glpi_plugin_sharepointinfos_configs.ClientSecret', 'glpi_plugin_sharepointinfos_configs.Hostname', 'glpi_plugin_sharepointinfos_configs.SitePath', 'glpi_plugin_sharepointinfos_configs.ListDisplayName', 'glpi_plugin_sharepointinfos_configs.Link'];
 
    $plugin = new Plugin();
    if ($plugin->isActivated('sharepointinfos')){ // verification si le plugin sharepointinfos est installé et activé
