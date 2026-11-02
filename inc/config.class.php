@@ -59,15 +59,18 @@ class PluginSharepointinfosConfig extends CommonDBTM
             <div class="col-md-6">
                <label for="TenantID" class="form-label mb-1"><?php echo __('Tenant ID', 'sharepointinfos'); ?></label>
                <?php echo Html::input('TenantID', ['value' => $config->TenantID(), 'class' => 'form-control', 'id' => 'TenantID']); ?>
+               <?php echo PluginSharepointinfosCrypto::unreadableNotice($config->fields['TenantID'] ?? ''); ?>
             </div>
             <div class="col-md-6">
                <label for="ClientID" class="form-label mb-1"><?php echo __('Client ID', 'sharepointinfos'); ?></label>
                <?php echo Html::input('ClientID', ['value' => $config->ClientID(), 'class' => 'form-control', 'id' => 'ClientID']); ?>
+               <?php echo PluginSharepointinfosCrypto::unreadableNotice($config->fields['ClientID'] ?? ''); ?>
             </div>
 
             <div class="col-md-6">
                <label for="ClientSecret" class="form-label mb-1"><?php echo __('Client Secret', 'sharepointinfos'); ?></label>
                <?php echo Html::input('ClientSecret', ['value' => $config->ClientSecret(), 'class' => 'form-control', 'id' => 'ClientSecret']); ?>
+               <?php echo PluginSharepointinfosCrypto::unreadableNotice($config->fields['ClientSecret'] ?? ''); ?>
             </div>
             <div class="col-md-6">
                <label for="Hostname" class="form-label mb-1">
@@ -75,6 +78,7 @@ class PluginSharepointinfosConfig extends CommonDBTM
                   <small class="text-muted">(ex: votreentreprise.sharepoint.com)</small>
                </label>
                <?php echo Html::input('Hostname', ['value' => $config->Hostname(), 'class' => 'form-control', 'id' => 'Hostname', 'placeholder' => 'globalinfo763.sharepoint.com']); ?>
+               <?php echo PluginSharepointinfosCrypto::unreadableNotice($config->fields['Hostname'] ?? ''); ?>
             </div>
 
             <div class="col-md-6">
@@ -83,6 +87,7 @@ class PluginSharepointinfosConfig extends CommonDBTM
                   <small class="text-muted">(ex: /sites/clients)</small>
                </label>
                <?php echo Html::input('SitePath', ['value' => $config->SitePath(), 'class' => 'form-control', 'id' => 'SitePath', 'placeholder' => '/sites/clients']); ?>
+               <?php echo PluginSharepointinfosCrypto::unreadableNotice($config->fields['SitePath'] ?? ''); ?>
                <small class="form-text text-muted">Copier depuis l'URL : https://votreentreprise.sharepoint.com<strong>/sites/clients</strong>/...</small>
             </div>
 
@@ -92,6 +97,7 @@ class PluginSharepointinfosConfig extends CommonDBTM
                   <small class="text-muted">(nom exact affiché dans SharePoint)</small>
                </label>
                <?php echo Html::input('ListDisplayName', ['value' => $config->ListDisplayName(), 'class' => 'form-control', 'id' => 'ListDisplayName', 'placeholder' => 'Liste techno']); ?>
+               <?php echo PluginSharepointinfosCrypto::unreadableNotice($config->fields['ListDisplayName'] ?? ''); ?>
                <small class="form-text text-muted">Le nom exact tel qu'affiché dans SharePoint (sensible à la casse)</small>
             </div>
 
@@ -100,6 +106,7 @@ class PluginSharepointinfosConfig extends CommonDBTM
                   <?php echo __('Lien de redirection vers la liste', 'sharepointinfos'); ?>
                </label>
                <?php echo Html::input('Link', ['value' => $config->Link(), 'class' => 'form-control', 'id' => 'Link', 'placeholder' => 'Liste techno']); ?>
+               <?php echo PluginSharepointinfosCrypto::unreadableNotice($config->fields['Link'] ?? ''); ?>
                <small class="form-text text-muted">https://globalinfo763.sharepoint.com/sites/XXXXX/Lists/XXXXX/AllItems.aspx</small>
             </div>
             </div>
@@ -273,7 +280,11 @@ class PluginSharepointinfosConfig extends CommonDBTM
       return PluginSharepointinfosCrypto::decrypt((string)$data);
    }
 
-   private static function migrateEncryptedFieldsToSodium(Migration $migration): void
+   /**
+    * Secrets réécrits au format de GLPIKey (clé de GLPI). Une valeur illisible n'est pas touchée : elle est
+    * signalée dans le journal du plugin et dans le formulaire, et une clé restaurée pourra encore la lire.
+    */
+   private static function migrateEncryptedFields(Migration $migration): void
    {
       global $DB;
 
@@ -282,36 +293,38 @@ class PluginSharepointinfosConfig extends CommonDBTM
          return;
       }
 
+      $fields = array_values(array_filter(
+         ['TenantID', 'ClientID', 'ClientSecret', 'Hostname', 'SitePath', 'ListDisplayName', 'Link'],
+         static fn(string $field): bool => $DB->fieldExists($table, $field, false)
+      ));
+      if ($fields === []) {
+         return;
+      }
+
       $row = $DB->request([
-         'SELECT' => ['id', 'TenantID', 'ClientID', 'ClientSecret', 'Hostname', 'SitePath', 'ListDisplayName', 'Link'],
+         'SELECT' => array_merge(['id'], $fields),
          'FROM'   => $table,
          'WHERE'  => ['id' => 1],
-         'LIMIT'  => 1
+         'LIMIT'  => 1,
       ])->current();
-
       if (!is_array($row)) {
          return;
       }
 
       $updates = [];
-      foreach (['TenantID', 'ClientID', 'ClientSecret', 'Hostname', 'SitePath', 'ListDisplayName', 'Link'] as $field) {
+      foreach ($fields as $field) {
          $raw = (string)($row[$field] ?? '');
-         if ($raw === '') {
-            continue;
-         }
-         try {
-            $migrated = PluginSharepointinfosCrypto::migrateIfLegacy($raw);
-         } catch (Throwable $e) {
-            continue;
-         }
-         if (is_string($migrated) && $migrated !== $raw) {
-            $updates[$field] = $migrated;
+         $new = PluginSharepointinfosCrypto::upgrade($raw);
+         if ($new === null) {
+            Toolbox::logInFile('plugin-sharepointinfos', "Secret « $field » illisible (clé de chiffrement changée ou perdue) : à ressaisir dans la configuration du plugin.\n");
+         } elseif ($new !== $raw) {
+            $updates[$field] = $new;
          }
       }
 
-      if (!empty($updates)) {
+      if ($updates !== []) {
          $DB->update($table, $updates, ['id' => (int)$row['id']]);
-         $migration->displayMessage('Migration chiffrement config SharePoint Infos vers sodium');
+         $migration->displayMessage('Secrets du plugin rechiffrés avec la clé de GLPI');
       }
    }
   
@@ -346,7 +359,7 @@ class PluginSharepointinfosConfig extends CommonDBTM
          $config->add(['id' => 1,]);
       }
 
-      self::migrateEncryptedFieldsToSodium($migration);
+      self::migrateEncryptedFields($migration);
    }
 
    static function uninstall(Migration $migration)
