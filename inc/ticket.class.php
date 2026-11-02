@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 if (!defined('GLPI_ROOT')) {
    die("Sorry. You can't access directly to this file");
@@ -123,8 +123,18 @@ class PluginSharepointinfosTicket extends CommonDBTM {
             return $escape($val);
          };
 
-         if (!empty($result)) {
+         if (isset($result['error'])) {
+            // Connexion ou lecture SharePoint en échec (AUTH_FAILED, NO_DATA…) : un message, pas une liste.
+            // Parcourue comme une liste, cette réponse écrivait « foreach() argument must be of type array » à
+            // chaque ouverture de l'onglet.
+            echo '<div class="alert alert-warning">'
+               . $escape(sprintf(__('Informations SharePoint indisponibles (%s) : vérifier la configuration du plugin.', 'sharepointinfos'), (string)$result['error']))
+               . '</div>';
+         } elseif (!empty($result)) {
             foreach ($result as $item) {
+               if (!is_array($item)) {
+                  continue;
+               }
                   echo '<div style="background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin: 20px 0; overflow: hidden;">';
                   echo '<table style="width: 100%; border-collapse: collapse;">';
                   echo '<tbody>';
